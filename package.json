@@ -1,0 +1,13 @@
+{
+  "name": "voxpilot-speaking-lab",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A no-login AI speaking practice lab for TOEFL-style repetition, interview, scoring, and pronunciation feedback.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js 5173"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
