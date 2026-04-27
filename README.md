@@ -1,8 +1,30 @@
 # VoxPilot Speaking Lab
 
-一个无需登录、无需数据库、开箱即可用的托福口语练习网站。它面向 2026 新托福口语练习，包含 `Listen and Repeat`、`Take an Interview`、完整练习、本地历史记录和题库。
+**Languages:** [中文](#中文) | [English](#english)
 
-## 运行
+---
+
+## 中文
+
+VoxPilot Speaking Lab 是一个无需登录、无需数据库、开箱即可用的本地口语练习网站。它面向 TOEFL-style 口语训练，支持复述练习、面试问答、模拟评分、发音诊断、复练对比和可选 AI/API 增强。
+
+> 说明：本项目不是 ETS 官方产品，也不包含泄露考场题。题库为基于公开题型说明创作的仿真练习题。
+
+### 功能
+
+- Listen and Repeat 复述练习
+- Take an Interview 面试问答练习
+- 11 题完整练习模式
+- 110 道仿真题：60 道复述题，50 道问答题
+- 浏览器录音、回放和语音识别转写
+- 1-6 半分制本地模拟评分
+- 音频质量、停顿、语速、信噪比和发音可识别度诊断
+- 疑似音素训练点：`/θ/`、`/r/`、`/l/`、词尾音、辅音连缀等
+- 同题复练对比
+- 历史记录和弱项追踪
+- API Setup 页面，可选接入 AI 内容评分和外部发音评分
+
+### 运行
 
 ```bash
 npm.cmd start
@@ -16,68 +38,196 @@ http://localhost:5173
 
 如果 5173 被占用，服务器会自动尝试 5174。
 
-## 功能
+推荐使用最新版 Chrome 或 Edge。若浏览器不支持语音识别，可以手动输入转写文本后点击分析。
 
-- 使用浏览器语音合成播放英文句子
-- 使用浏览器语音识别生成转写
-- 本地启发式评分，不需要 API key
-- Listen and Repeat 差异高亮
-- Interview 结构、内容、流利度、语言反馈
-- 110 道仿真题：60 道 Listen and Repeat，50 道 Take an Interview
-- 11 题完整练习流程
-- 使用 `localStorage` 保存最近练习记录
+### 评分系统
 
-## 题库说明
+本地评分引擎按 1-6 半分制输出模拟分，不等同 ETS 官方评分。
 
-题库按 ETS 公开的 2026 TOEFL iBT Speaking 题型说明和校园/学术场景原创编写，用来模拟练习节奏和回答方式。项目不包含泄露考场题，也不声称题目等同 ETS 官方真题。
+Listen and Repeat 会综合：
+
+- 听辨处理
+- 完整复述
+- 语序稳定
+- 发音可识别
+- 清晰节奏
+
+Take an Interview 会综合：
+
+- 任务回应
+- 观点展开
+- 组织逻辑
+- 语言使用
+- 发音可识别
+- 表达流利
+
+录音结束后还会分析：
+
+- 音量 RMS
+- 峰值和削波
+- 静音占比
+- 最长停顿
+- 停顿次数
+- 估算信噪比 SNR
+- 去除静音后的发声语速
+
+### API Setup
+
+网站内置 `Setup` 页面。你可以在界面里填写自己的 API key、endpoint 和 model。
+
+支持：
+
+- OpenAI Responses API
+- OpenAI-compatible Chat Completions endpoint
+- Azure Speech Pronunciation Assessment
+- 自定义发音评分 JSON endpoint
+
+安全设计：
+
+- API key 不写进源码
+- 配置只保存在当前浏览器的 `localStorage`
+- 提交到 GitHub 不会包含你的个人密钥
+- 没有配置 API 时，系统会自动使用本地评分
+
+如果部署到公开网站，用户填写的 key 会从用户自己的浏览器发起请求。部分服务可能有 CORS 限制；遇到这种情况，可以用自定义后端代理或 custom endpoint。
+
+### 项目结构
+
+```text
+.
+├── app.js
+├── index.html
+├── styles.css
+├── server.js
+├── package.json
+├── README.md
+└── LICENSE
+```
+
+### 题库说明
+
+题库按 ETS 公开的 TOEFL iBT Speaking 题型说明和校园/学术场景原创编写，用来模拟练习节奏和回答方式。
 
 官方信息可参考：
 
 - https://www.ets.org/toefl/test-takers/ibt/about/content/speaking.html
 - https://www.ets.org/toefl/test-takers/ibt/prepare.html
 
-## 评分说明
+### License
 
-当前评分引擎是专业本地模拟评分，按 1-6 半分制输出，不等同 ETS 官方评分。
+MIT
 
-Listen and Repeat 会综合：
+---
 
-- 听辨处理：原句词、内容词和用户复述文本的匹配程度
-- 完整复述：漏词比例和句子覆盖程度
-- 语序稳定：替换、多说、漏说对句子顺序的影响
-- 清晰节奏：回答时长是否接近自然复述速度
-- 发音可识别：语音识别置信度、内容词匹配和录音质量的综合代理分
+## English
 
-Take an Interview 会综合：
+VoxPilot Speaking Lab is a no-login, no-database, ready-to-run local speaking practice app. It is designed for TOEFL-style speaking practice, including repetition drills, interview-style responses, simulated scoring, pronunciation diagnostics, retry comparison, and optional AI/API-enhanced feedback.
 
-- 任务回应：是否直接回答问题，是否与题目相关
-- 观点展开：是否有理由、例子和结果说明
-- 组织逻辑：是否形成“观点-理由-例子-结果”的结构
-- 语言使用：词汇多样性、内容词密度和句式复杂度
-- 发音可识别：识别稳定性、音频质量和关键词清晰度
-- 表达流利：语速、时长和填充词情况
+> Note: This project is not affiliated with ETS and does not include leaked exam questions. The question bank contains original simulation items based on publicly available test-format information.
 
-录音结束后还会分析音频质量、静音占比、长停顿、估算信噪比、削波和发声语速。由于浏览器本地能力有限，目前的发音分是 pronunciation proxy，不是音素级 forced alignment；如果以后接入专业语音评测 API，可以沿用当前报告结构补充 `/θ/`、`/r/`、词尾音和重音等细项。
+### Features
 
-新增的完整评分闭环包括：
+- Listen and Repeat practice
+- Take an Interview practice
+- 11-item full practice mode
+- 110 simulation questions: 60 repetition items and 50 interview items
+- Browser recording, playback, and speech recognition transcription
+- Local simulated 1-6 half-point scoring
+- Audio quality, pauses, pace, estimated SNR, and intelligibility diagnostics
+- Suspected pronunciation focus points: `/θ/`, `/r/`, `/l/`, final consonants, consonant clusters, and more
+- Same-question retry comparison
+- Local history and weakness tracking
+- Setup page for optional AI scoring and external pronunciation assessment
 
-- 考试权重：每次报告展示当前题型的官方风格权重分布
-- 疑似音素诊断：根据错漏词、内容词和高风险音素生成 `/θ/`、`/r/`、词尾音等训练提示
-- 复练对比：同一道题再次练习时，对比分数和分项变化
-- 弱项追踪：历史页统计最近练习中最低的评分维度和高频问题
-- 考试模式：完整练习会自动朗读题目，并锁定换题和显示原句
+### Run Locally
 
-## API Setup
+```bash
+npm.cmd start
+```
 
-网站有一个 `Setup` 页面，可以填写自己的 API，不需要把任何密钥写进代码：
+Then open:
 
-- AI 内容评分：支持 OpenAI Responses API，或 OpenAI-compatible Chat Completions endpoint
-- 发音评分：支持 Azure Speech Pronunciation Assessment，或自定义 JSON endpoint
-- 所有 endpoint、model、API key 只保存到当前浏览器的 `localStorage`
-- 提交到 GitHub 的文件不包含个人密钥
+```text
+http://localhost:5173
+```
 
-Azure 发音评分会把浏览器录音转换为 16kHz WAV，再调用 Pronunciation Assessment。自定义 endpoint 会收到题目、转写、音频 base64 和本地音频统计，方便以后接自己的后端或 forced-alignment 服务。
+If port 5173 is busy, the server will try 5174 automatically.
 
-## 浏览器建议
+Chrome or Edge is recommended. If browser speech recognition is unavailable, you can type or edit the transcript manually and then analyze it.
 
-推荐使用最新版 Chrome 或 Edge。若浏览器不支持语音识别，可以手动输入转写文本后点击分析。
+### Scoring
+
+The local scoring engine outputs simulated 1-6 half-point scores. It is not an official ETS scoring system.
+
+Listen and Repeat evaluates:
+
+- Listening processing
+- Completeness
+- Word-order stability
+- Pronunciation intelligibility
+- Clear pacing
+
+Take an Interview evaluates:
+
+- Task response
+- Idea development
+- Organization
+- Language use
+- Pronunciation intelligibility
+- Fluency
+
+After recording, the app also analyzes:
+
+- RMS volume
+- Peak and clipping
+- Silence ratio
+- Longest pause
+- Pause count
+- Estimated SNR
+- Articulation rate excluding silence
+
+### API Setup
+
+The app includes a `Setup` page where users can enter their own API keys, endpoints, and models.
+
+Supported options:
+
+- OpenAI Responses API
+- OpenAI-compatible Chat Completions endpoint
+- Azure Speech Pronunciation Assessment
+- Custom pronunciation scoring JSON endpoint
+
+Security design:
+
+- API keys are not stored in source code
+- Configuration is saved only in the current browser's `localStorage`
+- Publishing the repo to GitHub will not expose personal keys
+- If no API is configured, the app continues to use local scoring
+
+If deployed as a public site, requests are made from the user's browser with the user's own key. Some services may block direct browser requests due to CORS; in that case, use a custom backend proxy or custom endpoint.
+
+### Project Structure
+
+```text
+.
+├── app.js
+├── index.html
+├── styles.css
+├── server.js
+├── package.json
+├── README.md
+└── LICENSE
+```
+
+### Question Bank
+
+The question bank contains original TOEFL-style simulation items based on publicly available TOEFL iBT Speaking format information and common campus/academic contexts.
+
+Official references:
+
+- https://www.ets.org/toefl/test-takers/ibt/about/content/speaking.html
+- https://www.ets.org/toefl/test-takers/ibt/prepare.html
+
+### License
+
+MIT
