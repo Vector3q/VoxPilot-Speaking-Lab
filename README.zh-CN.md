@@ -79,6 +79,26 @@ Take an Interview 会综合：
 - 根据弱项推荐 Chunk Repeat、Example Builder、Pronunciation Focus、Speed Control 等训练
 - 最近表现稳定后才升级，避免一次高分就误判水平
 
+## Coach Capsule
+
+Coach Capsule 是按需出现的深度复练闭环。它会在一次评分后、Ladder 推荐修正处、历史记录复盘处启动。
+
+Basic 模式不需要任何 API：
+
+- 从固定 weakness taxonomy 中诊断一个主要问题
+- 把弱项映射到一个 micro-drill
+- 保留第一遍回答，不覆盖原始转写
+- 引导用户重答同一题
+- 本地比较 before / after
+- 把结果更新到当前浏览器的 Coach Profile
+
+AI 模式是可选增强：
+
+- 复用 Setup 里的 AI 内容评分配置
+- 生成更细的诊断、micro-drill 和 retake mission
+- API 调用失败时自动回到 Basic 本地规则
+- API key 不会写入仓库
+
 ## API Setup
 
 网站内置 `Setup` 页面。你可以在界面里填写自己的 API key、endpoint 和 model。

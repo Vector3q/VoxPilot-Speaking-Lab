@@ -897,6 +897,8 @@ QUESTION_BANK.interview.push(...EXTRA_INTERVIEW_QUESTIONS);
 const STORAGE_KEY = "toefl-speaking-lab-history-v1";
 const SETUP_STORAGE_KEY = "toefl-speaking-lab-setup-v1";
 const LADDER_STORAGE_KEY = "voxpilot-ladder-profile-v1";
+const COACH_PROFILE_STORAGE_KEY = "voxpilot-coach-profile-v1";
+const COACH_SESSIONS_STORAGE_KEY = "voxpilot-coach-sessions-v1";
 const SpeechRecognitionApi = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 const LADDER_LEVELS = {
@@ -959,6 +961,37 @@ const DRILL_LIBRARY = {
   "checkpoint": { label: "Checkpoint", tip: "像小测一样完成，不中途换题，不看答案。" }
 };
 
+const REPEAT_WEAKNESSES = {
+  keywordRetention: "关键词保留不足",
+  wordOrderStability: "语序不稳定",
+  endingRetention: "句尾容易丢失",
+  pronunciationClarity: "发音清晰度不足",
+  paceControl: "语速和停顿控制不稳"
+};
+
+const INTERVIEW_WEAKNESSES = {
+  directAnswer: "没有直接回答",
+  reasonDevelopment: "理由展开不足",
+  exampleSpecificity: "例子不够具体",
+  organization: "结构不清楚",
+  languageUse: "词汇语法表达单一",
+  fluency: "流利度不足"
+};
+
+const COACH_DRILL_MAP = {
+  keywordRetention: "chunk-repeat",
+  wordOrderStability: "chunk-repeat",
+  endingRetention: "chunk-repeat",
+  pronunciationClarity: "pronunciation-focus",
+  paceControl: "speed-control",
+  directAnswer: "answer-skeleton",
+  reasonDevelopment: "because-builder",
+  exampleSpecificity: "example-builder",
+  organization: "answer-skeleton",
+  languageUse: "language-upgrade",
+  fluency: "timed-response"
+};
+
 const state = {
   tab: "practice",
   mode: "repeat",
@@ -976,6 +1009,7 @@ const state = {
   isScoring: false,
   audioStats: null,
   audioAnalysisPending: false,
+  recordingTarget: "main",
   recognitionStats: {
     confidenceSamples: [],
     finalSegments: 0,
@@ -988,6 +1022,7 @@ const state = {
   lastSavedSignature: "",
   setup: loadSetupConfig(),
   ladder: loadLadderProfile(),
+  coach: getDefaultCoachState(),
   bankType: "all",
   bankDifficulty: "all",
   toast: "",
@@ -1138,6 +1173,7 @@ function renderLadderView() {
   const recentAverage = averageScore((profile.recent || []).slice(0, 8));
   const progress = getStepProgress(profile, step.id);
   const recommendation = DRILL_LIBRARY[profile.recommendedDrill] || DRILL_LIBRARY["example-builder"];
+  const coachProfile = loadCoachProfile();
 
   return `
     <section class="ladder-board">
@@ -1180,8 +1216,16 @@ function renderLadderView() {
             <span class="badge orange">${escapeHtml(recommendation.label)}</span>
             ${(profile.weaknesses || []).slice(0, 3).map((item) => `<span class="badge blue">${escapeHtml(item)}</span>`).join("")}
           </div>
+          ${state.setup.coach?.enabled ? `
+            <div class="coach-inline-actions">
+              <button class="primary-button" data-start-coach-ladder="true"><span class="button-icon">◎</span>用 Coach 练这个 Fix</button>
+            </div>
+          ` : ""}
         </section>
       </div>
+
+      ${renderCoachProfileSummary(coachProfile)}
+      ${state.coach.active ? renderCoachCapsule() : ""}
 
       <section class="feedback-section wide-section">
         <div class="history-top">
@@ -1411,6 +1455,216 @@ function renderFeedback() {
             <p class="upgrade-answer">${escapeHtml(feedback.improvedAnswer)}</p>
           </section>
         </div>
+      </div>
+      ${renderCoachEntryFromFeedback()}
+      ${state.coach.active ? renderCoachCapsule() : ""}
+    </section>
+  `;
+}
+
+function renderCoachEntryFromFeedback() {
+  if (!state.setup.coach?.enabled || !state.feedback || !cleanupSpacing(state.transcript) || state.coach.active) return "";
+  const aiReady = canUseCoachAi();
+  return `
+    <section class="coach-entry">
+      <div>
+        <div class="badge-row">
+          <span class="badge violet">Coach Capsule</span>
+          <span class="badge">${aiReady ? "AI 深度复练可用" : "Basic 本地复练"}</span>
+        </div>
+        <h3>想知道下一遍具体怎么改？</h3>
+        <p class="compact-copy">Coach 会把这次回答拆成一个小练习，并让你重答一次看变化。没配置 API 时走 Basic 本地规则；开启 AI 后会用你的 Setup 配置生成更细诊断。</p>
+      </div>
+      <button class="primary-button" data-start-coach-current="true"><span class="button-icon">◎</span>让 Coach 拆解这题</button>
+    </section>
+  `;
+}
+
+function renderCoachCapsule() {
+  const coach = state.coach;
+  if (!coach.active) return "";
+  const modeLabel = coach.usedAi ? "AI Coach" : "Basic Local Coach";
+  return `
+    <section class="coach-capsule">
+      <div class="history-top">
+        <div>
+          <div class="badge-row">
+            <span class="badge violet">Coach Deep Retake</span>
+            <span class="badge blue">${escapeHtml(modeLabel)}</span>
+            <span class="badge">${escapeHtml(coach.source || "practice")}</span>
+          </div>
+          <h2>从反馈到行动</h2>
+          <p class="compact-copy">一次只抓一个主要问题：诊断 → 小练习 → 重答 → 对比。</p>
+        </div>
+        <button class="ghost-button" data-coach-reset="true"><span class="button-icon">×</span>收起 Coach</button>
+      </div>
+      ${renderCoachStepper(coach.phase)}
+      ${coach.error ? `<div class="coach-alert">${escapeHtml(coach.error)}</div>` : ""}
+      ${renderCoachDiagnosis()}
+      ${renderCoachDrill()}
+      ${renderCoachRetake()}
+      ${renderCoachReflection()}
+    </section>
+  `;
+}
+
+function renderCoachStepper(phase) {
+  const order = [
+    ["diagnosing", "Diagnosis"],
+    ["drill-ready", "Micro-Drill"],
+    ["retaking", "Retake"],
+    ["complete", "Reflection"]
+  ];
+  const activeIndex = Math.max(0, order.findIndex(([key]) => key === phase));
+  const safeIndex = phase === "reflecting" ? 3 : activeIndex;
+  return `
+    <div class="coach-stepper">
+      ${order.map(([key, label], index) => {
+        const className = index < safeIndex ? "done" : index === safeIndex ? "active" : "";
+        return `<div class="coach-step ${className}"><span>${index + 1}</span>${escapeHtml(label)}</div>`;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderCoachDiagnosis() {
+  const coach = state.coach;
+  if (coach.phase === "diagnosing") {
+    return `
+      <section class="coach-card coach-diagnosis">
+        <h3>Step 1 · Diagnosis</h3>
+        <p class="upgrade-answer">Coach 正在读取题目、转写、本地评分、音频指标和最近弱项。</p>
+      </section>
+    `;
+  }
+  if (!coach.diagnosis) return "";
+  const weaknessLabel = getWeaknessLabel(coach.diagnosis.primaryWeakness, coach.original.taskType);
+  return `
+    <section class="coach-card coach-diagnosis">
+      <div class="section-title-row">
+        <h3>Step 1 · Diagnosis</h3>
+        <span class="badge orange">${escapeHtml(weaknessLabel)}</span>
+      </div>
+      <p class="upgrade-answer">${escapeHtml(coach.diagnosis.mainDiagnosis)}</p>
+      <h4>为什么这么判断</h4>
+      <ul class="coach-evidence">
+        ${(coach.diagnosis.evidence || []).slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+      </ul>
+    </section>
+  `;
+}
+
+function renderCoachDrill() {
+  const coach = state.coach;
+  if (!coach.drill || !["drill-ready", "retaking", "reflecting", "complete"].includes(coach.phase)) return "";
+  return `
+    <section class="coach-card coach-drill">
+      <div class="section-title-row">
+        <h3>Step 2 · Micro-Drill</h3>
+        <span class="badge violet">${escapeHtml(coach.drill.title)}</span>
+      </div>
+      <p class="upgrade-answer">${escapeHtml(coach.drill.instruction)}</p>
+      <div class="coach-mission">
+        <strong>Retake Mission</strong>
+        <p>${escapeHtml(coach.drill.retakeMission)}</p>
+        <ul>
+          ${(coach.drill.successCriteria || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+        </ul>
+      </div>
+      ${coach.phase === "drill-ready" ? `
+        <div class="control-actions">
+          <button class="primary-button" data-start-coach-retake="true"><span class="button-icon">●</span>开始 Coach 重答</button>
+        </div>
+      ` : ""}
+    </section>
+  `;
+}
+
+function renderCoachRetake() {
+  const coach = state.coach;
+  if (!["retaking", "reflecting", "complete"].includes(coach.phase)) return "";
+  const isCoachRecording = state.isRecording && state.recordingTarget === "coach";
+  const recordingBlocked = state.isRecording && state.recordingTarget !== "coach";
+  const retakeText = cleanupSpacing(coach.retake.transcript);
+  return `
+    <section class="coach-card">
+      <div class="section-title-row">
+        <h3>Step 3 · Retake</h3>
+        <span class="badge">${retakeText ? `${normalizeWords(retakeText).length} words` : "等待重答"}</span>
+      </div>
+      <div class="recorder-row compact-recorder">
+        <div class="timer">${formatTime(isCoachRecording ? state.elapsed : coach.retake.duration || 0)}</div>
+        <button class="record-button ${isCoachRecording ? "recording" : ""}" data-coach-record-toggle="true" ${recordingBlocked ? "disabled" : ""} aria-label="Coach retake record">
+          <span class="record-dot"></span>
+          <span>${isCoachRecording ? "停止录音" : "录 Coach 重答"}</span>
+        </button>
+        <div class="control-actions">
+          <button class="primary-button" data-analyze-coach-retake="true" ${coach.phase === "reflecting" ? "disabled" : ""}><span class="button-icon">✓</span>分析重答</button>
+          <button class="ghost-button" data-start-coach-retake="true"><span class="button-icon">↻</span>重新重答</button>
+        </div>
+      </div>
+      ${coach.retake.audioUrl ? `<audio class="audio-player" controls src="${coach.retake.audioUrl}"></audio>` : ""}
+      <label class="transcript-box">
+        <span>Coach 重答转写</span>
+        <textarea id="coachTranscriptInput" placeholder="${SpeechRecognitionApi ? "录音时会自动生成，也可以手动修改。" : "当前浏览器不支持自动识别，请在这里输入 Coach 重答内容。"}">${escapeHtml(coach.retake.transcript)}</textarea>
+      </label>
+      ${coach.phase === "reflecting" ? `<p class="compact-copy">Coach 正在比较第一遍和第二遍。</p>` : ""}
+    </section>
+  `;
+}
+
+function renderCoachReflection() {
+  const coach = state.coach;
+  if (coach.phase !== "complete" || !coach.reflection) return "";
+  return `
+    <section class="coach-card coach-reflection">
+      <div class="section-title-row">
+        <h3>Step 4 · Reflection</h3>
+        <span class="badge ${coach.reflection.improved ? "blue" : "orange"}">${coach.reflection.improved ? "有明显改进" : "还需要一遍"}</span>
+      </div>
+      <div class="coach-before-after">
+        <div>
+          <h4>Before</h4>
+          <p>${escapeHtml(coach.original.transcript || "暂无第一遍文本")}</p>
+        </div>
+        <div>
+          <h4>After</h4>
+          <p>${escapeHtml(coach.retake.transcript || "暂无重答文本")}</p>
+        </div>
+      </div>
+      <p class="upgrade-answer">${escapeHtml(coach.reflection.improvementSummary)}</p>
+      <ul class="coach-evidence">
+        ${(coach.reflection.visibleChanges || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+      </ul>
+      <div class="coach-mission">
+        <strong>Next Action</strong>
+        <p>${escapeHtml(coach.reflection.nextAction)}</p>
+      </div>
+    </section>
+  `;
+}
+
+function renderCoachProfileSummary(profile = loadCoachProfile()) {
+  const weakness = profile.primaryWeakness
+    ? getWeaknessLabel(profile.primaryWeakness, profile.primaryWeakness in REPEAT_WEAKNESSES ? "repeat" : "interview")
+    : "还没有稳定弱项";
+  const drill = DRILL_LIBRARY[profile.currentDrill] || DRILL_LIBRARY["example-builder"];
+  return `
+    <section class="feedback-section wide-section coach-profile-summary">
+      <div class="history-top">
+        <div>
+          <h3>Coach Profile</h3>
+          <p class="compact-copy">长期记忆只存在当前浏览器。Basic 会记录弱项和复练结果；AI 只在你开启 Setup 后用于生成更细诊断。</p>
+        </div>
+        <div class="coach-profile-chip">
+          <span>${escapeHtml(weakness)}</span>
+          <strong>${profile.stablePasses || 0}/3 stable</strong>
+        </div>
+      </div>
+      <div class="item-meta">
+        <span class="badge violet">${escapeHtml(profile.levelHint || "L?")}</span>
+        <span class="badge blue">${escapeHtml(drill.label)}</span>
+        <span class="badge orange">${escapeHtml(profile.currentCoachGoal || "完成一次 Coach 重答后生成目标")}</span>
       </div>
     </section>
   `;
@@ -1751,7 +2005,7 @@ function renderHistoryView() {
         </div>
         <div class="control-actions">
           <button class="ghost-button" data-export-history="true"><span class="button-icon">↓</span>导出</button>
-          <button class="danger-button" data-clear-history="true"><span class="button-icon">×</span>清空</button>
+          <button class="danger-button" data-clear-history="true"><span class="button-icon">×</span>清空本地记录</button>
         </div>
       </div>
       ${renderWeaknessPanel(history)}
@@ -1771,7 +2025,10 @@ function renderHistoryView() {
                           <span class="badge orange">Score ${item.score}/6</span>
                         </div>
                       </div>
-                      <button class="small-button" data-review-history="${item.id}">查看</button>
+                      <div class="history-actions">
+                        <button class="small-button" data-review-history="${item.id}">查看</button>
+                        <button class="small-button" data-start-coach-history="${item.id}">Coach 复盘</button>
+                      </div>
                     </article>
                   `
                 )
@@ -1799,6 +2056,15 @@ function renderSetupView() {
       </div>
 
       <div class="setup-grid">
+        <section class="feedback-section setup-basic">
+          <h3>Basic 本地功能</h3>
+          <ul>
+            <li>本地 1-6 分模拟评分、rubric 细目、发音代理诊断和弱项追踪默认开启。</li>
+            <li>Ladder 和 Coach Capsule 的基础版本不需要 API，不会把录音或文本发到外部服务。</li>
+            <li>历史、Ladder profile 和 Coach profile 都只保存在当前浏览器 localStorage。</li>
+          </ul>
+        </section>
+
         <section class="feedback-section">
           <h3>AI 内容评分</h3>
           <label class="check-row">
@@ -1857,6 +2123,31 @@ function renderSetupView() {
             <input id="pronKey" type="password" value="${escapeHtml(setup.pronunciation.apiKey)}" placeholder="Azure Speech key 或自定义 key">
           </label>
           <p class="compact-copy">Azure 模式会把录音转成 16kHz WAV 后请求 Pronunciation Assessment。Custom 模式会向你的 endpoint 发送 JSON。</p>
+        </section>
+
+        <section class="feedback-section">
+          <h3>Agentic Coach</h3>
+          <label class="check-row">
+            <input id="coachEnabled" type="checkbox" ${setup.coach.enabled ? "checked" : ""}>
+            <span>启用 Coach Capsule 深度复练入口</span>
+          </label>
+          <label class="check-row">
+            <input id="coachUseAi" type="checkbox" ${setup.coach.useAi ? "checked" : ""}>
+            <span>使用 AI 生成 Coach 诊断和 micro-drill</span>
+          </label>
+          <label class="setup-field">
+            <span>Coach 输出风格</span>
+            <select id="coachTone">
+              <option value="strict" ${setup.coach.tone === "strict" ? "selected" : ""}>严格</option>
+              <option value="balanced" ${setup.coach.tone === "balanced" ? "selected" : ""}>平衡</option>
+              <option value="encouraging" ${setup.coach.tone === "encouraging" ? "selected" : ""}>鼓励</option>
+            </select>
+          </label>
+          <label class="check-row">
+            <input id="coachSingleWeaknessOnly" type="checkbox" ${setup.coach.singleWeaknessOnly ? "checked" : ""}>
+            <span>每次只显示一个主要问题</span>
+          </label>
+          <p class="compact-copy">Coach AI 复用上面的 AI 内容评分 endpoint、API key 和 model。未配置或调用失败时，会自动回到 Basic 本地规则。</p>
         </section>
       </div>
 
@@ -2261,7 +2552,10 @@ function bindEvents() {
   document.querySelectorAll("[data-record-toggle]").forEach((button) => {
     button.addEventListener("click", () => {
       if (state.isRecording) stopRecording();
-      else startRecording();
+      else {
+        state.recordingTarget = "main";
+        startRecording();
+      }
     });
   });
 
@@ -2269,6 +2563,13 @@ function bindEvents() {
   if (transcriptInput) {
     transcriptInput.addEventListener("input", (event) => {
       state.transcript = event.target.value;
+    });
+  }
+
+  const coachTranscriptInput = document.querySelector("#coachTranscriptInput");
+  if (coachTranscriptInput) {
+    coachTranscriptInput.addEventListener("input", (event) => {
+      state.coach.retake.transcript = event.target.value;
     });
   }
 
@@ -2309,6 +2610,15 @@ function bindEvents() {
   bindClick("[data-ladder-diagnostic-next]", () => continueLadderDiagnostic());
   bindClick("[data-reset-ladder]", () => resetLadderWithConfirm());
   bindClick("[data-reset-ladder-plan]", () => resetLadderPlan());
+  bindClick("[data-start-coach-current]", () => startCoachFromCurrentAttempt());
+  bindClick("[data-start-coach-ladder]", () => startCoachFromLadder());
+  bindClick("[data-coach-reset]", () => resetCoachSession());
+  bindClick("[data-start-coach-retake]", () => startCoachRetake());
+  bindClick("[data-coach-record-toggle]", () => {
+    if (state.isRecording && state.recordingTarget === "coach") stopRecording();
+    else startCoachRetakeRecording();
+  });
+  bindClick("[data-analyze-coach-retake]", () => analyzeCoachRetake());
 
   document.querySelectorAll("[data-practice-question]").forEach((button) => {
     button.addEventListener("click", () => practiceQuestion(button.dataset.practiceQuestion));
@@ -2321,6 +2631,10 @@ function bindEvents() {
   document.querySelectorAll("[data-review-history]").forEach((button) => {
     button.addEventListener("click", () => reviewHistory(button.dataset.reviewHistory));
   });
+
+  document.querySelectorAll("[data-start-coach-history]").forEach((button) => {
+    button.addEventListener("click", () => startCoachFromHistory(button.dataset.startCoachHistory));
+  });
 }
 
 function bindClick(selector, handler) {
@@ -2329,9 +2643,452 @@ function bindClick(selector, handler) {
   });
 }
 
+async function startCoachFromCurrentAttempt(source = "practice") {
+  if (!state.setup.coach?.enabled) {
+    showToast("Coach Capsule 已在 Setup 中关闭。");
+    return;
+  }
+  const question = getActiveQuestion(state.tab === "full" && state.full.active);
+  const transcript = cleanupSpacing(state.transcript);
+  if (!state.feedback || !transcript) {
+    showToast("先完成一次练习评分，再让 Coach 拆解这题。");
+    return;
+  }
+
+  stopIfRecording();
+  resetCoachSession(false);
+  state.coach = createCoachSessionState({
+    source,
+    question,
+    transcript,
+    feedback: state.feedback,
+    audioStats: state.audioStats,
+    historyId: null
+  });
+  await runCoachDiagnosis();
+}
+
+async function startCoachFromLadder() {
+  if (!state.setup.coach?.enabled) {
+    showToast("Coach Capsule 已在 Setup 中关闭。");
+    return;
+  }
+  if (state.feedback && cleanupSpacing(state.transcript)) {
+    await startCoachFromCurrentAttempt("ladder");
+    return;
+  }
+
+  const profile = state.ladder || getDefaultLadderProfile();
+  const step = getCurrentLadderStep(profile);
+  const plan = profile.diagnosed ? getTodayLadderPlan(profile) : null;
+  const fixTask = plan ? plan.tasks.find((task) => task.drill === profile.recommendedDrill) || plan.tasks[2] || plan.tasks[0] : null;
+  const question = getQuestionById(fixTask?.questionId) || selectQuestionForLadderTask({
+    type: drillPrefersRepeat(profile.recommendedDrill) ? "repeat" : "interview",
+    difficulty: step.difficulty,
+    drill: profile.recommendedDrill
+  });
+  const primaryWeakness = weaknessFromDrill(profile.recommendedDrill, question.type);
+  const copy = getCoachCopy(primaryWeakness, question.type);
+  const diagnosis = normalizeCoachDiagnosis({
+    primaryWeakness,
+    secondaryWeakness: question.type === "repeat" ? "endingRetention" : "reasonDevelopment",
+    mainDiagnosis: `当前 Ladder 推荐你先处理：${getWeaknessLabel(primaryWeakness, question.type)}。`,
+    evidence: [
+      `Ladder 最近推荐的 fix 是 ${DRILL_LIBRARY[profile.recommendedDrill]?.label || "Example Builder"}。`,
+      "这次 Coach 会先给你一个可执行 micro-drill，再让你完成一次重答。",
+      "完成重答后，系统会把结果写入本地 Coach Profile。"
+    ],
+    coachGoal: copy.goal,
+    recommendedDrill: profile.recommendedDrill,
+    drillInstruction: copy.instruction,
+    retakeMission: copy.mission,
+    successCriteria: copy.criteria,
+    userFacingFeedback: copy.feedback
+  }, { taskType: question.type });
+
+  stopIfRecording();
+  resetCoachSession(false);
+  state.coach = createCoachSessionState({
+    source: "ladder",
+    question,
+    transcript: "",
+    feedback: null,
+    audioStats: null,
+    historyId: null
+  });
+  state.coach.phase = "drill-ready";
+  state.coach.diagnosis = diagnosis;
+  state.coach.drill = buildCoachDrill(diagnosis, question.type);
+  state.coach.usedAi = false;
+  render();
+}
+
+async function startCoachFromHistory(historyId) {
+  if (!state.setup.coach?.enabled) {
+    showToast("Coach Capsule 已在 Setup 中关闭。");
+    return;
+  }
+  const item = loadHistory().find((entry) => entry.id === historyId);
+  if (!item) return;
+  const question = getQuestionById(item.questionId) || {
+    id: item.questionId,
+    type: item.type,
+    text: item.prompt,
+    category: "History",
+    difficulty: "Review",
+    sample: ""
+  };
+  const feedback = createFeedbackFromHistoryItem(item, question);
+
+  stopIfRecording();
+  resetCoachSession(false);
+  if (question.type === "repeat") {
+    state.currentRepeat = question;
+    state.mode = "repeat";
+  } else {
+    state.currentInterview = question;
+    state.mode = "interview";
+  }
+  state.tab = "practice";
+  state.full.active = false;
+  state.full.complete = false;
+  state.transcript = item.transcript || "";
+  state.duration = item.duration || 0;
+  state.elapsed = item.duration || 0;
+  state.feedback = feedback;
+  state.audioStats = item.pronunciation?.audioStats || null;
+  state.coach = createCoachSessionState({
+    source: "history",
+    question,
+    transcript: state.transcript,
+    feedback,
+    audioStats: state.audioStats,
+    historyId
+  });
+  await runCoachDiagnosis();
+}
+
+async function runCoachDiagnosis() {
+  const coach = state.coach;
+  const payload = buildCoachPayload(coach);
+  coach.phase = "diagnosing";
+  coach.isRunning = true;
+  coach.error = null;
+  render();
+
+  let diagnosis = null;
+  let usedAi = false;
+  const canUseAi = canUseCoachAi();
+  if (canUseAi) {
+    try {
+      diagnosis = await runAiCoachDiagnosis(payload);
+      usedAi = true;
+    } catch (error) {
+      coach.error = `AI Coach 调用失败，已切换到 Basic 本地规则：${error.message}`;
+    }
+  }
+  if (!diagnosis) diagnosis = buildLocalCoachDiagnosis(payload);
+
+  coach.phase = "drill-ready";
+  coach.isRunning = false;
+  coach.usedAi = usedAi;
+  coach.diagnosis = normalizeCoachDiagnosis(diagnosis, payload);
+  coach.drill = buildCoachDrill(coach.diagnosis, payload.taskType);
+  render();
+}
+
+function buildCoachPayload(coach) {
+  return {
+    taskType: coach.original.taskType,
+    questionText: coach.original.questionText,
+    transcript: coach.original.transcript,
+    localFeedback: coach.original.feedback,
+    localFeedbackSummary: summarizeFeedbackForCoach(coach.original.feedback),
+    audioMetrics: summarizeAudioStats(coach.original.audioStats),
+    recentHistory: loadHistory().slice(0, 8).map((item) => ({
+      type: item.type,
+      score: item.score,
+      summary: item.summary,
+      issues: item.issues || []
+    })),
+    coachProfile: loadCoachProfile(),
+    ladderProfile: state.ladder
+  };
+}
+
+function buildLocalCoachDiagnosis(payload) {
+  const primaryWeakness = payload.taskType === "repeat"
+    ? inferRepeatWeakness(payload.localFeedback)
+    : inferInterviewWeakness(payload.localFeedback, payload.transcript);
+  const secondaryWeakness = inferSecondaryWeakness(primaryWeakness, payload.taskType);
+  const copy = getCoachCopy(primaryWeakness, payload.taskType);
+  return {
+    primaryWeakness,
+    secondaryWeakness,
+    mainDiagnosis: copy.diagnosis,
+    evidence: buildCoachEvidence(primaryWeakness, payload),
+    coachGoal: copy.goal,
+    recommendedDrill: COACH_DRILL_MAP[primaryWeakness],
+    drillInstruction: copy.instruction,
+    retakeMission: copy.mission,
+    successCriteria: copy.criteria,
+    userFacingFeedback: copy.feedback
+  };
+}
+
+async function runAiCoachDiagnosis(payload) {
+  const config = state.setup.ai;
+  if (!config.endpoint || !config.apiKey || !config.model) {
+    throw new Error("请在 Setup 里填写 AI endpoint、API key 和 model。");
+  }
+  const systemPrompt = [
+    "You are VoxPilot, an adaptive TOEFL-style speaking coach.",
+    "Do not estimate an official TOEFL score.",
+    "Diagnose the learner's most important training weakness and generate one actionable micro-drill.",
+    "Choose primaryWeakness and secondaryWeakness only from the allowed taxonomy.",
+    "Allowed Listen & Repeat weaknesses: keywordRetention, wordOrderStability, endingRetention, pronunciationClarity, paceControl.",
+    "Allowed Take an Interview weaknesses: directAnswer, reasonDevelopment, exampleSpecificity, organization, languageUse, fluency.",
+    "Return only valid JSON with keys: primaryWeakness, secondaryWeakness, mainDiagnosis, evidence, coachGoal, recommendedDrill, drillInstruction, retakeMission, successCriteria, userFacingFeedback."
+  ].join(" ");
+  const userPrompt = JSON.stringify({
+    taskType: payload.taskType,
+    question: payload.questionText,
+    userTranscript: payload.transcript,
+    localFeedback: payload.localFeedbackSummary,
+    audioMetrics: payload.audioMetrics,
+    recentLearnerProfile: payload.coachProfile,
+    tone: state.setup.coach?.tone || "balanced",
+    singleWeaknessOnly: Boolean(state.setup.coach?.singleWeaknessOnly)
+  }, null, 2);
+  return callConfiguredAiJson(config, systemPrompt, userPrompt);
+}
+
+function buildCoachDrill(diagnosis, taskType) {
+  const fallbackDrill = taskType === "repeat" ? "chunk-repeat" : "answer-skeleton";
+  const drillId = DRILL_LIBRARY[diagnosis.recommendedDrill] ? diagnosis.recommendedDrill : (COACH_DRILL_MAP[diagnosis.primaryWeakness] || fallbackDrill);
+  const drill = DRILL_LIBRARY[drillId] || DRILL_LIBRARY[fallbackDrill];
+  const copy = getCoachCopy(diagnosis.primaryWeakness, taskType);
+  return {
+    id: drillId,
+    title: drill.label,
+    instruction: cleanupSpacing(diagnosis.drillInstruction || copy.instruction || drill.tip),
+    retakeMission: cleanupSpacing(diagnosis.retakeMission || copy.mission),
+    successCriteria: Array.isArray(diagnosis.successCriteria) && diagnosis.successCriteria.length
+      ? diagnosis.successCriteria.slice(0, 4)
+      : copy.criteria,
+    tip: drill.tip
+  };
+}
+
+function startCoachRetake() {
+  if (!state.coach.active) return;
+  clearCoachRetakeWork();
+  state.coach.phase = "retaking";
+  state.status = "准备 Coach 重答";
+  render();
+}
+
+function startCoachRetakeRecording() {
+  if (!state.coach.active) return;
+  if (state.isRecording && state.recordingTarget !== "coach") {
+    showToast("请先停止当前练习录音。");
+    return;
+  }
+  state.recordingTarget = "coach";
+  state.coach.phase = "retaking";
+  startRecording();
+}
+
+async function analyzeCoachRetake() {
+  const coach = state.coach;
+  if (!coach.active || coach.phase === "reflecting") return;
+  const transcript = cleanupSpacing(coach.retake.transcript);
+  if (!transcript) {
+    showToast("还没有 Coach 重答转写。可以先录音，也可以手动输入。");
+    return;
+  }
+
+  const question = getQuestionById(coach.original.questionId) || {
+    id: coach.original.questionId,
+    type: coach.original.taskType,
+    text: coach.original.questionText,
+    category: "Coach",
+    difficulty: "Retake",
+    sample: ""
+  };
+  const duration = coach.retake.duration || state.duration || state.elapsed;
+  const context = {
+    audioStats: coach.retake.audioStats,
+    recognitionStats: {
+      confidenceSamples: [...state.recognitionStats.confidenceSamples],
+      finalSegments: state.recognitionStats.finalSegments,
+      interimSegments: state.recognitionStats.interimSegments
+    }
+  };
+
+  coach.retake.transcript = transcript;
+  coach.phase = "reflecting";
+  coach.isRunning = true;
+  render();
+
+  const feedback = question.type === "repeat"
+    ? createRepeatFeedback(question, transcript, duration, context)
+    : createInterviewFeedback(question, transcript, duration, context);
+  await enhanceFeedbackWithExternalScorers(feedback, question, transcript, duration, context, coach.retake.audioBlob);
+
+  coach.retake.feedback = feedback;
+  coach.isRunning = false;
+  await runCoachReflection();
+}
+
+async function runCoachReflection() {
+  const coach = state.coach;
+  const payload = {
+    questionText: coach.original.questionText,
+    beforeTranscript: coach.original.transcript,
+    afterTranscript: coach.retake.transcript,
+    retakeMission: coach.drill?.retakeMission || "",
+    primaryWeakness: coach.diagnosis?.primaryWeakness || "",
+    beforeFeedback: coach.original.feedback,
+    afterFeedback: coach.retake.feedback
+  };
+  let reflection = null;
+  const canUseAi = canUseCoachAi();
+  if (canUseAi) {
+    try {
+      reflection = await runAiCoachReflection(payload);
+      coach.usedAi = true;
+    } catch (error) {
+      coach.error = `AI Reflection 调用失败，已使用 Basic 本地对比：${error.message}`;
+    }
+  }
+  if (!reflection) reflection = buildLocalCoachReflection(payload);
+  coach.reflection = normalizeCoachReflection(reflection, payload);
+  coach.phase = "complete";
+  coach.isRunning = false;
+  completeCoachSession();
+  render();
+}
+
+async function runAiCoachReflection(payload) {
+  const config = state.setup.ai;
+  if (!config.endpoint || !config.apiKey || !config.model) {
+    throw new Error("请在 Setup 里填写 AI endpoint、API key 和 model。");
+  }
+  const systemPrompt = [
+    "You are VoxPilot's retake evaluator.",
+    "Compare the learner's first answer and retake answer.",
+    "Focus only on whether the retake followed the mission.",
+    "Do not estimate an official TOEFL score.",
+    "Return only valid JSON with keys: improved, improvementSummary, visibleChanges, remainingIssue, nextAction, profileUpdate."
+  ].join(" ");
+  const userPrompt = JSON.stringify({
+    question: payload.questionText,
+    firstAnswer: payload.beforeTranscript,
+    retakeAnswer: payload.afterTranscript,
+    retakeMission: payload.retakeMission,
+    primaryWeakness: payload.primaryWeakness
+  }, null, 2);
+  return callConfiguredAiJson(config, systemPrompt, userPrompt);
+}
+
+function buildLocalCoachReflection(payload) {
+  const beforeScore = Number(payload.beforeFeedback?.score) || 0;
+  const afterScore = Number(payload.afterFeedback?.score) || 0;
+  const mission = evaluateCoachMission(payload.afterTranscript, payload.primaryWeakness);
+  const wordDelta = normalizeWords(payload.afterTranscript).length - normalizeWords(payload.beforeTranscript).length;
+  const improved = mission.passed || afterScore >= beforeScore + 0.5 || wordDelta >= 12;
+  const visibleChanges = [];
+  if (wordDelta > 8) visibleChanges.push("第二遍信息量更足，不再只是短句回答。");
+  if (mission.notes.length) visibleChanges.push(...mission.notes.slice(0, 3));
+  if (afterScore > beforeScore) visibleChanges.push(`本地模拟分从 ${beforeScore || "-"} 提升到 ${afterScore}/6。`);
+  if (!visibleChanges.length) visibleChanges.push("第二遍已经完成，但主要任务还不够稳定，建议马上再来一遍。");
+  return {
+    improved,
+    improvementSummary: improved ? "这次重答有明显进步，回答更接近 Coach mission。" : "这次重答还没有稳定完成 mission，先不要换题。",
+    visibleChanges,
+    remainingIssue: mission.remainingIssue,
+    nextAction: improved
+      ? `继续练 ${state.coach.drill?.title || "当前 drill"}，直到连续 3 次稳定做到。`
+      : "马上按同一个 mission 再重答一次，只改一个主要问题。",
+    profileUpdate: {
+      stablePassDelta: improved ? 1 : -1,
+      patternResolved: improved
+    }
+  };
+}
+
+function completeCoachSession() {
+  const coach = state.coach;
+  if (coach.sessionSaved || !coach.reflection) return;
+  const session = {
+    id: crypto.randomUUID ? crypto.randomUUID() : `coach-${Date.now()}`,
+    createdAt: new Date().toISOString(),
+    source: coach.source,
+    taskType: coach.original.taskType,
+    questionId: coach.original.questionId,
+    questionText: coach.original.questionText,
+    before: {
+      transcript: coach.original.transcript,
+      score: coach.original.feedback?.score || null,
+      feedbackSummary: coach.original.feedback?.summary || ""
+    },
+    diagnosis: coach.diagnosis,
+    drill: coach.drill,
+    after: {
+      transcript: coach.retake.transcript,
+      score: coach.retake.feedback?.score || null
+    },
+    reflection: coach.reflection,
+    usedAi: coach.usedAi
+  };
+  saveCoachSession(session);
+  updateCoachProfile(session);
+  coach.sessionSaved = true;
+}
+
+async function callConfiguredAiJson(config, systemPrompt, userPrompt) {
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${config.apiKey}`
+  };
+  const body = config.mode === "chat"
+    ? {
+        model: config.model,
+        temperature: clamp(0, 1, Number(config.temperature) || 0),
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ]
+      }
+    : {
+        model: config.model,
+        temperature: clamp(0, 1, Number(config.temperature) || 0),
+        instructions: systemPrompt,
+        input: userPrompt
+      };
+  const response = await fetch(config.endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`${response.status} ${text.slice(0, 160)}`);
+  }
+  const data = await response.json();
+  return parseJsonLike(extractAiText(data));
+}
+
 async function startRecording() {
   if (state.isRecording) return;
-  clearCurrentWork(false);
+  const target = state.recordingTarget === "coach" ? "coach" : "main";
+  if (target === "coach") clearCoachRetakeWork();
+  else {
+    state.recordingTarget = "main";
+    clearCurrentWork(false);
+  }
   state.isRecording = true;
   state.status = SpeechRecognitionApi ? "正在录音，自动转写中" : "正在录音，可稍后手动输入转写";
   state.elapsed = 0;
@@ -2348,15 +3105,23 @@ async function startRecording() {
         if (event.data.size > 0) chunks.push(event.data);
       });
       state.mediaRecorder.addEventListener("stop", async () => {
-        if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
         const blob = new Blob(chunks, { type: "audio/webm" });
-        state.audioBlob = blob;
-        state.audioUrl = URL.createObjectURL(blob);
+        if (target === "coach") {
+          if (state.coach.retake.audioUrl) URL.revokeObjectURL(state.coach.retake.audioUrl);
+          state.coach.retake.audioBlob = blob;
+          state.coach.retake.audioUrl = URL.createObjectURL(blob);
+        } else {
+          if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
+          state.audioBlob = blob;
+          state.audioUrl = URL.createObjectURL(blob);
+        }
         state.audioAnalysisPending = true;
         render();
-        state.audioStats = await analyzeAudioBlob(blob, state.duration || state.elapsed);
+        const audioStats = await analyzeAudioBlob(blob, state.duration || state.elapsed);
+        if (target === "coach") state.coach.retake.audioStats = audioStats;
+        else state.audioStats = audioStats;
         state.audioAnalysisPending = false;
-        if (state.transcript.trim() && !state.feedback) {
+        if (target === "main" && state.transcript.trim() && !state.feedback) {
           analyzeCurrent();
           return;
         }
@@ -2374,9 +3139,12 @@ async function startRecording() {
 function stopRecording() {
   if (!state.isRecording) return;
 
+  const target = state.recordingTarget === "coach" ? "coach" : "main";
   state.isRecording = false;
   state.duration = state.elapsed;
-  state.status = state.transcript.trim() ? "录音完成，已生成转写" : "录音完成，请检查或手动输入转写";
+  if (target === "coach") state.coach.retake.duration = state.elapsed;
+  const transcript = target === "coach" ? state.coach.retake.transcript : state.transcript;
+  state.status = cleanupSpacing(transcript) ? "录音完成，已生成转写" : "录音完成，请检查或手动输入转写";
   stopTimer();
 
   if (state.mediaRecorder && state.mediaRecorder.state !== "inactive") {
@@ -2398,7 +3166,7 @@ function stopRecording() {
   state.recognition = null;
   render();
 
-  if (state.transcript.trim()) {
+  if (target === "main" && state.transcript.trim()) {
     window.setTimeout(() => {
       if (!state.feedback && !state.audioAnalysisPending) analyzeCurrent();
     }, 900);
@@ -2408,6 +3176,7 @@ function stopRecording() {
 function startRecognition() {
   if (!SpeechRecognitionApi) return;
   try {
+    const target = state.recordingTarget === "coach" ? "coach" : "main";
     const recognition = new SpeechRecognitionApi();
     recognition.lang = "en-US";
     recognition.interimResults = true;
@@ -2428,9 +3197,16 @@ function startRecognition() {
           state.recognitionStats.interimSegments += 1;
         }
       }
-      state.transcript = cleanupSpacing(text);
-      const input = document.querySelector("#transcriptInput");
-      if (input) input.value = state.transcript;
+      const transcript = cleanupSpacing(text);
+      if (target === "coach") {
+        state.coach.retake.transcript = transcript;
+        const input = document.querySelector("#coachTranscriptInput");
+        if (input) input.value = state.coach.retake.transcript;
+      } else {
+        state.transcript = transcript;
+        const input = document.querySelector("#transcriptInput");
+        if (input) input.value = state.transcript;
+      }
     });
     recognition.addEventListener("error", () => {
       if (state.isRecording) {
@@ -2820,7 +3596,7 @@ function getBandLabel(score) {
   return "需要大量练习";
 }
 
-async function enhanceFeedbackWithExternalScorers(feedback, question, transcript, duration, context) {
+async function enhanceFeedbackWithExternalScorers(feedback, question, transcript, duration, context, audioBlob = state.audioBlob) {
   const setup = state.setup || getDefaultSetupConfig();
   const errors = [];
 
@@ -2839,7 +3615,7 @@ async function enhanceFeedbackWithExternalScorers(feedback, question, transcript
     state.status = "正在调用外部发音评分";
     render();
     try {
-      const pronunciationResult = await callPronunciationScorer(setup.pronunciation, question, transcript, duration, context, state.audioBlob);
+      const pronunciationResult = await callPronunciationScorer(setup.pronunciation, question, transcript, duration, context, audioBlob);
       mergeExternalPronunciation(feedback, pronunciationResult, question.type);
     } catch (error) {
       errors.push(`发音评分失败：${error.message}`);
@@ -3765,6 +4541,7 @@ function practiceQuestion(id) {
 function reviewHistory(id) {
   const item = loadHistory().find((entry) => entry.id === id);
   if (!item) return;
+  resetCoachSession(false);
   const question = [...QUESTION_BANK.repeat, ...QUESTION_BANK.interview].find((entry) => entry.id === item.questionId) || {
     id: item.questionId,
     type: item.type,
@@ -3816,6 +4593,522 @@ function clearCurrentWork(keepQuestion) {
     state.audioUrl = "";
   }
   state.audioBlob = null;
+  if (state.coach?.active) resetCoachSession(false);
+  else state.recordingTarget = "main";
+}
+
+function getDefaultCoachState() {
+  return {
+    active: false,
+    phase: "idle",
+    source: null,
+    usedAi: false,
+    sessionSaved: false,
+    original: {
+      questionId: null,
+      taskType: null,
+      questionText: "",
+      transcript: "",
+      feedback: null,
+      audioStats: null,
+      historyId: null
+    },
+    diagnosis: null,
+    drill: null,
+    retake: {
+      transcript: "",
+      audioBlob: null,
+      audioUrl: "",
+      feedback: null,
+      audioStats: null,
+      duration: 0
+    },
+    reflection: null,
+    isRunning: false,
+    error: null
+  };
+}
+
+function createCoachSessionState({ source, question, transcript, feedback, audioStats, historyId }) {
+  return {
+    ...getDefaultCoachState(),
+    active: true,
+    phase: "diagnosing",
+    source,
+    original: {
+      questionId: question.id,
+      taskType: question.type,
+      questionText: question.text,
+      transcript: cleanupSpacing(transcript),
+      feedback,
+      audioStats,
+      historyId
+    }
+  };
+}
+
+function resetCoachSession(renderNow = true) {
+  if (state.coach?.retake?.audioUrl) URL.revokeObjectURL(state.coach.retake.audioUrl);
+  state.coach = getDefaultCoachState();
+  state.recordingTarget = "main";
+  if (renderNow) render();
+}
+
+function canUseCoachAi() {
+  const setup = state.setup || getDefaultSetupConfig();
+  return Boolean(
+    setup.coach?.useAi &&
+    setup.ai?.endpoint &&
+    setup.ai?.apiKey &&
+    setup.ai?.model
+  );
+}
+
+function clearCoachRetakeWork() {
+  if (state.coach?.retake?.audioUrl) URL.revokeObjectURL(state.coach.retake.audioUrl);
+  state.coach.retake = {
+    transcript: "",
+    audioBlob: null,
+    audioUrl: "",
+    feedback: null,
+    audioStats: null,
+    duration: 0
+  };
+  state.coach.reflection = null;
+  state.coach.sessionSaved = false;
+  state.elapsed = 0;
+  state.duration = 0;
+  state.audioAnalysisPending = false;
+  state.recordingTarget = "coach";
+  state.recognitionStats = {
+    confidenceSamples: [],
+    finalSegments: 0,
+    interimSegments: 0
+  };
+}
+
+function createFeedbackFromHistoryItem(item, question) {
+  return {
+    type: item.type || question.type,
+    score: item.score,
+    summary: item.summary || "",
+    strengths: item.strengths || [],
+    issues: item.issues || [],
+    improvedAnswer: "",
+    metrics: [
+      { label: "History", value: `${item.score}/6` },
+      { label: "Duration", value: item.duration ? `${item.duration}s` : "-" }
+    ],
+    detailScores: item.detailScores || [],
+    pronunciation: item.pronunciation || null,
+    rubricProfile: item.rubricProfile || null,
+    comparison: item.comparison || null
+  };
+}
+
+function getWeaknessLabel(weakness, taskType) {
+  const labels = taskType === "repeat" ? REPEAT_WEAKNESSES : INTERVIEW_WEAKNESSES;
+  return labels[weakness] || REPEAT_WEAKNESSES[weakness] || INTERVIEW_WEAKNESSES[weakness] || weakness || "综合问题";
+}
+
+function weaknessFromDrill(drill, taskType) {
+  const entries = Object.entries(COACH_DRILL_MAP).filter(([, drillId]) => drillId === drill);
+  const match = entries.find(([weakness]) => taskType === "repeat" ? weakness in REPEAT_WEAKNESSES : weakness in INTERVIEW_WEAKNESSES);
+  if (match) return match[0];
+  return taskType === "repeat" ? "keywordRetention" : "exampleSpecificity";
+}
+
+function normalizeCoachDiagnosis(raw, payload) {
+  const taskType = payload.taskType || "interview";
+  const allowed = taskType === "repeat" ? REPEAT_WEAKNESSES : INTERVIEW_WEAKNESSES;
+  const fallback = buildLocalCoachDiagnosis({
+    ...payload,
+    localFeedback: payload.localFeedback || null,
+    transcript: payload.transcript || ""
+  });
+  const primaryWeakness = allowed[raw?.primaryWeakness] ? raw.primaryWeakness : fallback.primaryWeakness;
+  const secondaryWeakness = allowed[raw?.secondaryWeakness] && raw.secondaryWeakness !== primaryWeakness
+    ? raw.secondaryWeakness
+    : inferSecondaryWeakness(primaryWeakness, taskType);
+  const recommendedDrill = DRILL_LIBRARY[raw?.recommendedDrill]
+    ? raw.recommendedDrill
+    : (COACH_DRILL_MAP[primaryWeakness] || (taskType === "repeat" ? "chunk-repeat" : "answer-skeleton"));
+  const copy = getCoachCopy(primaryWeakness, taskType);
+  return {
+    primaryWeakness,
+    secondaryWeakness,
+    mainDiagnosis: cleanupSpacing(raw?.mainDiagnosis || copy.diagnosis),
+    evidence: Array.isArray(raw?.evidence) && raw.evidence.length ? raw.evidence.slice(0, 4) : fallback.evidence,
+    coachGoal: cleanupSpacing(raw?.coachGoal || copy.goal),
+    recommendedDrill,
+    drillInstruction: cleanupSpacing(raw?.drillInstruction || copy.instruction),
+    retakeMission: cleanupSpacing(raw?.retakeMission || copy.mission),
+    successCriteria: Array.isArray(raw?.successCriteria) && raw.successCriteria.length ? raw.successCriteria.slice(0, 4) : copy.criteria,
+    userFacingFeedback: cleanupSpacing(raw?.userFacingFeedback || copy.feedback)
+  };
+}
+
+function summarizeFeedbackForCoach(feedback) {
+  if (!feedback) return "No scored attempt yet.";
+  return JSON.stringify({
+    score: feedback.score,
+    summary: feedback.summary,
+    strengths: feedback.strengths || [],
+    issues: feedback.issues || [],
+    detailScores: (feedback.detailScores || []).map((item) => ({
+      label: item.label,
+      score: item.score,
+      detail: item.detail
+    })),
+    pronunciation: feedback.pronunciation ? {
+      score: feedback.pronunciation.score,
+      confidence: feedback.pronunciation.confidence,
+      pauseControl: feedback.pronunciation.pauseControl
+    } : null
+  });
+}
+
+function summarizeAudioStats(audioStats) {
+  if (!audioStats || !audioStats.available) return "No audio metrics available.";
+  return JSON.stringify({
+    duration: audioStats.duration,
+    rms: audioStats.rms,
+    clippingPercent: audioStats.clippingPercent,
+    silenceRatio: audioStats.silenceRatio,
+    longestSilence: audioStats.longestSilence,
+    pauseCount: audioStats.pauseCount,
+    snrDb: audioStats.snrDb
+  });
+}
+
+function inferInterviewWeakness(feedback, transcript) {
+  const text = ` ${String(transcript || "").toLowerCase()} `;
+  const wordCount = normalizeWords(transcript).length;
+  const hasDirect = /\b(i think|i believe|i prefer|i would|my opinion|yes|no)\b/.test(text.slice(0, 160));
+  const hasBecause = /\b(because|since|the reason|one reason)\b/.test(text);
+  const hasExample = /\b(for example|for instance|last semester|one time|once|when i|in my class|in one course)\b/.test(text);
+  const hasResult = /\b(as a result|this helped|therefore|because of this|so i|that is why)\b/.test(text);
+  if (!hasDirect && wordCount < 28) return "directAnswer";
+  if (!hasBecause) return "reasonDevelopment";
+  if (!hasExample) return "exampleSpecificity";
+  if (!hasResult) return "organization";
+  if ((feedback?.pronunciation?.pauseControl ?? 1) < 0.6) return "fluency";
+  return "languageUse";
+}
+
+function inferRepeatWeakness(feedback) {
+  const details = feedback?.detailScores || [];
+  const lowest = [...details].sort((a, b) => Number(a.score) - Number(b.score))[0];
+  if (!lowest) return "keywordRetention";
+  const label = lowest.label || "";
+  if (/完整|遗漏|漏词|Completeness|Listening|处理/.test(label)) return "keywordRetention";
+  if (/语序|顺序|order|sequence/i.test(label)) return "wordOrderStability";
+  if (/发音|清晰|Pronunciation|intelligibility/i.test(label)) return "pronunciationClarity";
+  if (/节奏|停顿|pace|pacing|fluency/i.test(label)) return "paceControl";
+  return "endingRetention";
+}
+
+function inferSecondaryWeakness(primaryWeakness, taskType) {
+  const repeatOrder = ["keywordRetention", "wordOrderStability", "endingRetention", "pronunciationClarity", "paceControl"];
+  const interviewOrder = ["directAnswer", "reasonDevelopment", "exampleSpecificity", "organization", "languageUse", "fluency"];
+  const order = taskType === "repeat" ? repeatOrder : interviewOrder;
+  return order.find((item) => item !== primaryWeakness) || order[0];
+}
+
+function buildCoachEvidence(weakness, payload) {
+  const text = ` ${String(payload.transcript || "").toLowerCase()} `;
+  const evidence = [];
+  if (payload.localFeedback?.summary) evidence.push(payload.localFeedback.summary);
+  if (weakness === "exampleSpecificity") evidence.push("回答里没有稳定出现 for example / last semester / one time 这类具体场景信号。");
+  if (weakness === "reasonDevelopment") evidence.push("观点后缺少 because / since 这样的理由展开。");
+  if (weakness === "organization") evidence.push("例子后缺少 as a result / this helped me 这样的结果句。");
+  if (weakness === "directAnswer") evidence.push("开头没有足够直接地给出立场。");
+  if (weakness === "languageUse") evidence.push("基础结构已经有了，下一步应该升级表达和减少重复。");
+  if (weakness === "fluency") evidence.push("停顿、填充词或节奏稳定性是下一遍更值得优先处理的点。");
+  if (weakness === "keywordRetention") evidence.push("复述任务优先看关键词和核心内容是否保留下来。");
+  if (weakness === "wordOrderStability") evidence.push("复述时需要减少主动改写，先保留原句顺序。");
+  if (weakness === "endingRetention") evidence.push("句尾信息容易在复述时丢失，下一遍只盯最后 3-5 个关键词。");
+  if (weakness === "pronunciationClarity") evidence.push("系统识别稳定性或本地发音代理分偏低，下一遍先慢速说清内容词。");
+  if (weakness === "paceControl") evidence.push("下一遍需要按意群停顿，而不是逐词挤出来。");
+  if (/\b(helpful|interesting|good|important)\b/.test(text)) evidence.push("你用了较泛的评价词，可以换成具体行动和结果。");
+  return evidence.slice(0, 4);
+}
+
+function getCoachCopy(weakness, taskType) {
+  const copies = {
+    keywordRetention: {
+      diagnosis: "你的复述主要问题是关键词保留不够稳定。",
+      goal: "先抓住主语、动词、时间地点和内容词。",
+      instruction: "把原句拆成 2-3 个意群，每块只保留关键词，再连起来复述。",
+      mission: "下一遍只做一件事：保留原句关键词，不主动换词。",
+      criteria: ["至少保留主要名词和动词", "不要加入原句没有的信息", "句子意思不能变"],
+      feedback: "先求准，再求快。"
+    },
+    wordOrderStability: {
+      diagnosis: "你的复述有内容，但语序和句子骨架不够稳定。",
+      goal: "按原句顺序复述，不急着改写。",
+      instruction: "听完后先默念句子骨架，再按原来的顺序说出来。",
+      mission: "下一遍必须尽量保持原句顺序。",
+      criteria: ["先说主语和动词", "中间信息按原顺序", "不主动 paraphrase"],
+      feedback: "这一题先练句子骨架。"
+    },
+    endingRetention: {
+      diagnosis: "你的句尾信息容易丢失，导致复述不完整。",
+      goal: "把最后一个意群说完整。",
+      instruction: "听的时候特别标记最后 3-5 个内容词，复述时放慢句尾。",
+      mission: "下一遍必须把句尾关键词说出来。",
+      criteria: ["保留最后一个意群", "词尾音说完整", "不要越说越轻"],
+      feedback: "这次只盯句尾。"
+    },
+    pronunciationClarity: {
+      diagnosis: "你的发音清晰度会影响系统识别和听感。",
+      goal: "慢速说清内容词和词尾音。",
+      instruction: "选出 3 个内容词，先慢读两遍，再整句复述。",
+      mission: "下一遍放慢 10%，把内容词和词尾音说完整。",
+      criteria: ["内容词重读", "词尾音不吞", "录音音量稳定"],
+      feedback: "先清楚，再自然。"
+    },
+    paceControl: {
+      diagnosis: "你的语速和停顿控制还不够稳。",
+      goal: "按意群连续说完，减少长停顿。",
+      instruction: "用斜线把句子分块，每块一口气说完，块与块之间短停顿。",
+      mission: "下一遍按 2-3 个意群说，不逐词停顿。",
+      criteria: ["长停顿少于 1.2 秒", "每个意群连续", "整体语速自然"],
+      feedback: "把句子当成块，不当成单词清单。"
+    },
+    directAnswer: {
+      diagnosis: "你的回答需要更直接地开头表态。",
+      goal: "第一句话直接回答题目。",
+      instruction: "使用模板：I prefer ___ because ___. 然后再解释。",
+      mission: "下一遍第一句必须直接给观点。",
+      criteria: ["开头出现 I prefer / I think / I would", "不要先铺垫", "第一句包含 because 或理由方向"],
+      feedback: "先回答，再展开。"
+    },
+    reasonDevelopment: {
+      diagnosis: "你的观点有了，但理由展开不足。",
+      goal: "用 because 把观点和原因连起来。",
+      instruction: "用两句完成：I prefer ___. This is because ___.",
+      mission: "下一遍必须有一个清楚的 because 理由句。",
+      criteria: ["有 because / since", "理由解释为什么", "不要只说 helpful / good"],
+      feedback: "理由要解释作用。"
+    },
+    exampleSpecificity: {
+      diagnosis: "你的回答有观点，但例子不够具体。",
+      goal: "加入一个具体经历和一个结果句。",
+      instruction: "使用结构：I prefer ___ because ___. For example, last semester I ___. This helped me ___.",
+      mission: "下一遍必须包含具体时间或场景、你做了什么、结果是什么。",
+      criteria: ["有具体时间或场景", "有一个具体行动", "有结果句"],
+      feedback: "从泛泛理由变成真实场景。"
+    },
+    organization: {
+      diagnosis: "你的内容有材料，但结构收束不够清楚。",
+      goal: "用观点、理由、例子、结果把回答闭合。",
+      instruction: "按四句结构说：观点 → because 理由 → for example 例子 → so/result 结论。",
+      mission: "下一遍必须有清楚的结果句或总结句。",
+      criteria: ["观点在前", "例子后有结果", "结尾回到题目"],
+      feedback: "让听的人知道你说完了什么。"
+    },
+    languageUse: {
+      diagnosis: "你的基础意思能表达，但词汇和句式还比较单一。",
+      goal: "把泛词换成具体表达。",
+      instruction: "把 good/helpful/interesting 换成 improve my efficiency / receive feedback / reduce stress 这类表达。",
+      mission: "下一遍至少升级两个泛泛表达。",
+      criteria: ["少用 good / helpful", "加入一个具体动词短语", "语法保持简单但准确"],
+      feedback: "升级表达，不堆复杂句。"
+    },
+    fluency: {
+      diagnosis: "你的回答需要更稳定的流利度。",
+      goal: "用短句连续说完，减少填充词和长停顿。",
+      instruction: "先写 4 个关键词，再用 4 个短句说完，不追求长难句。",
+      mission: "下一遍用短句连续说，避免长时间停住。",
+      criteria: ["少于 3 个填充词", "每句 8-14 个词", "中途不重启答案"],
+      feedback: "短句稳定比长句卡住更好。"
+    }
+  };
+  return copies[weakness] || copies[taskType === "repeat" ? "keywordRetention" : "exampleSpecificity"];
+}
+
+function evaluateCoachMission(transcript, weakness) {
+  const words = normalizeWords(transcript);
+  const lower = ` ${String(transcript || "").toLowerCase()} `;
+  const notes = [];
+  let passed = false;
+  let remainingIssue = "mission 还不够稳定。";
+  if (weakness === "exampleSpecificity") {
+    const hasScene = /\b(for example|for instance|last semester|one time|once|when i|in my class|in one course)\b/.test(lower);
+    const hasResult = /\b(as a result|this helped|therefore|because of this|so i|that is why)\b/.test(lower);
+    passed = hasScene && hasResult;
+    if (hasScene) notes.push("第二遍加入了具体场景或经历。");
+    if (hasResult) notes.push("第二遍补上了结果句。");
+    remainingIssue = "还需要同时出现具体场景和结果句。";
+  } else if (weakness === "reasonDevelopment") {
+    passed = /\b(because|since|the reason)\b/.test(lower) && words.length >= 24;
+    if (passed) notes.push("第二遍有更清楚的 because 理由句。");
+    remainingIssue = "理由还需要解释为什么，而不是只给评价词。";
+  } else if (weakness === "directAnswer") {
+    passed = /\b(i think|i believe|i prefer|i would|yes|no)\b/.test(lower.slice(0, 120));
+    if (passed) notes.push("第二遍开头更直接地回答了题目。");
+    remainingIssue = "第一句话还需要更快给出立场。";
+  } else if (weakness === "organization") {
+    passed = /\b(for example|for instance)\b/.test(lower) && /\b(as a result|therefore|that is why|so i)\b/.test(lower);
+    if (passed) notes.push("第二遍结构更完整，有例子也有结果。");
+    remainingIssue = "还需要在例子后补一句结果或总结。";
+  } else if (weakness === "languageUse") {
+    const uniqueRatio = words.length ? new Set(words).size / words.length : 0;
+    passed = words.length >= 30 && uniqueRatio >= 0.55;
+    if (passed) notes.push("第二遍表达更丰富，重复词比例更低。");
+    remainingIssue = "表达还可以更具体，减少 good/helpful/interesting。";
+  } else if (weakness === "fluency") {
+    const fillers = lower.match(/\b(um|uh|er|like|you know|sort of|kind of)\b/g) || [];
+    passed = words.length >= 25 && fillers.length <= 2;
+    if (passed) notes.push("第二遍更连续，填充词控制更好。");
+    remainingIssue = "还需要减少填充词或长停顿。";
+  } else {
+    const refWords = normalizeWords(state.coach.original.questionText);
+    const overlap = refWords.length ? countOverlap(refWords, new Set(words)) / Math.max(1, new Set(refWords).size) : 0;
+    passed = overlap >= 0.62;
+    if (passed) notes.push("第二遍保留了更多原句关键词。");
+    remainingIssue = "复述关键词保留还不够，先抓内容词。";
+  }
+  return { passed, notes, remainingIssue };
+}
+
+function normalizeCoachReflection(raw, payload) {
+  const fallback = buildLocalCoachReflection(payload);
+  return {
+    improved: typeof raw?.improved === "boolean" ? raw.improved : fallback.improved,
+    improvementSummary: cleanupSpacing(raw?.improvementSummary || fallback.improvementSummary),
+    visibleChanges: Array.isArray(raw?.visibleChanges) && raw.visibleChanges.length ? raw.visibleChanges.slice(0, 5) : fallback.visibleChanges,
+    remainingIssue: cleanupSpacing(raw?.remainingIssue || fallback.remainingIssue),
+    nextAction: cleanupSpacing(raw?.nextAction || fallback.nextAction),
+    profileUpdate: {
+      stablePassDelta: Number(raw?.profileUpdate?.stablePassDelta ?? fallback.profileUpdate.stablePassDelta),
+      patternResolved: Boolean(raw?.profileUpdate?.patternResolved ?? fallback.profileUpdate.patternResolved)
+    }
+  };
+}
+
+function getDefaultCoachProfile() {
+  return {
+    version: "1.0",
+    updatedAt: new Date().toISOString(),
+    levelHint: state.ladder?.diagnosed ? (LADDER_LEVELS[state.ladder.level] || LADDER_LEVELS[1]).name : "未诊断",
+    primaryWeakness: "",
+    secondaryWeakness: "",
+    skillState: {
+      repeat: {
+        keywordRetention: 0.62,
+        wordOrderStability: 0.62,
+        endingRetention: 0.58,
+        pronunciationClarity: 0.66,
+        paceControl: 0.66
+      },
+      interview: {
+        directAnswer: 0.68,
+        reasonDevelopment: 0.58,
+        exampleSpecificity: 0.52,
+        organization: 0.56,
+        languageUse: 0.58,
+        fluency: 0.64
+      }
+    },
+    recentPatterns: [],
+    currentCoachGoal: "完成一次 Coach 重答，建立你的第一条复练目标。",
+    currentDrill: "example-builder",
+    stablePasses: 0
+  };
+}
+
+function loadCoachProfile() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COACH_PROFILE_STORAGE_KEY) || "{}");
+    return normalizeCoachProfile(saved);
+  } catch (error) {
+    return getDefaultCoachProfile();
+  }
+}
+
+function normalizeCoachProfile(saved) {
+  const base = getDefaultCoachProfile();
+  return {
+    ...base,
+    ...saved,
+    skillState: {
+      repeat: { ...base.skillState.repeat, ...(saved.skillState?.repeat || {}) },
+      interview: { ...base.skillState.interview, ...(saved.skillState?.interview || {}) }
+    },
+    recentPatterns: Array.isArray(saved.recentPatterns) ? saved.recentPatterns.slice(0, 8) : [],
+    stablePasses: Number.isFinite(Number(saved.stablePasses)) ? Number(saved.stablePasses) : 0
+  };
+}
+
+function saveCoachProfile(profile) {
+  localStorage.setItem(COACH_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+}
+
+function saveCoachSession(session) {
+  const sessions = loadCoachSessions();
+  sessions.unshift(session);
+  localStorage.setItem(COACH_SESSIONS_STORAGE_KEY, JSON.stringify(sessions.slice(0, 50)));
+}
+
+function loadCoachSessions() {
+  try {
+    const raw = localStorage.getItem(COACH_SESSIONS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function updateCoachProfile(session) {
+  const profile = loadCoachProfile();
+  const group = session.taskType === "repeat" ? "repeat" : "interview";
+  const primary = session.diagnosis?.primaryWeakness || (group === "repeat" ? "keywordRetention" : "exampleSpecificity");
+  const secondary = session.diagnosis?.secondaryWeakness || inferSecondaryWeakness(primary, group);
+  const beforeScore = Number(session.before?.score) || 0;
+  const afterScore = Number(session.after?.score) || 0;
+  const scoreDelta = afterScore && beforeScore ? clamp(-0.25, 0.25, (afterScore - beforeScore) / 6) : 0;
+  const currentScore = clamp01((session.reflection?.improved ? 0.72 : 0.42) + scoreDelta);
+  profile.skillState[group][primary] = updateSkillScore(profile.skillState[group][primary], currentScore);
+  profile.primaryWeakness = primary;
+  profile.secondaryWeakness = secondary;
+  profile.updatedAt = new Date().toISOString();
+  profile.levelHint = state.ladder?.diagnosed ? (LADDER_LEVELS[state.ladder.level] || LADDER_LEVELS[1]).name : profile.levelHint;
+  profile.currentCoachGoal = session.drill?.retakeMission || profile.currentCoachGoal;
+  profile.currentDrill = session.drill?.id || profile.currentDrill;
+  profile.stablePasses = session.reflection?.improved
+    ? (profile.stablePasses || 0) + 1
+    : Math.max(0, (profile.stablePasses || 0) - 1);
+  const pattern = patternForWeakness(primary);
+  profile.recentPatterns = [pattern, ...(profile.recentPatterns || []).filter((item) => item !== pattern)].slice(0, 8);
+  if (profile.stablePasses >= 3) {
+    profile.currentCoachGoal = "这个目标已经连续稳定完成。下一次 Coach 会根据新回答挑一个更高优先级问题。";
+    profile.stablePasses = 0;
+  }
+  saveCoachProfile(profile);
+}
+
+function updateSkillScore(oldScore, currentScore, alpha = 0.25) {
+  if (!Number.isFinite(Number(oldScore))) return currentScore;
+  return Number(oldScore) * (1 - alpha) + Number(currentScore) * alpha;
+}
+
+function patternForWeakness(weakness) {
+  const patterns = {
+    keywordRetention: "missing_keywords_in_repeat",
+    wordOrderStability: "unstable_word_order",
+    endingRetention: "missing_sentence_ending",
+    pronunciationClarity: "low_pronunciation_clarity",
+    paceControl: "unstable_pace_control",
+    directAnswer: "delayed_direct_answer",
+    reasonDevelopment: "generic_reason_without_explanation",
+    exampleSpecificity: "generic_reason_without_example",
+    organization: "missing_result_sentence",
+    languageUse: "limited_language_variety",
+    fluency: "fluency_breakdowns"
+  };
+  return patterns[weakness] || "general_speaking_issue";
 }
 
 function stopIfRecording() {
@@ -3898,10 +5191,16 @@ function exportHistory() {
 }
 
 function clearHistoryWithConfirm() {
-  if (!loadHistory().length) return;
-  const ok = window.confirm("确定清空本地历史记录吗？");
+  const hasHistory = loadHistory().length > 0;
+  const hasCoachSessions = loadCoachSessions().length > 0;
+  const hasCoachProfile = Boolean(localStorage.getItem(COACH_PROFILE_STORAGE_KEY));
+  if (!hasHistory && !hasCoachSessions && !hasCoachProfile) return;
+  const ok = window.confirm("确定清空本地练习历史、Coach 复练记录和 Coach Profile 吗？这个操作只影响当前浏览器。");
   if (!ok) return;
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(COACH_SESSIONS_STORAGE_KEY);
+  localStorage.removeItem(COACH_PROFILE_STORAGE_KEY);
+  resetCoachSession(false);
   render();
 }
 
@@ -3921,6 +5220,12 @@ function getDefaultSetupConfig() {
       azureRegion: "",
       endpoint: "",
       apiKey: ""
+    },
+    coach: {
+      enabled: true,
+      useAi: true,
+      tone: "balanced",
+      singleWeaknessOnly: true
     }
   };
 }
@@ -3937,7 +5242,8 @@ function loadSetupConfig() {
 function mergeSetupConfig(base, saved) {
   return {
     ai: { ...base.ai, ...(saved.ai || {}) },
-    pronunciation: { ...base.pronunciation, ...(saved.pronunciation || {}) }
+    pronunciation: { ...base.pronunciation, ...(saved.pronunciation || {}) },
+    coach: { ...base.coach, ...(saved.coach || {}) }
   };
 }
 
@@ -3957,6 +5263,12 @@ function saveSetupFromForm() {
       azureRegion: cleanupSpacing(document.querySelector("#azureRegion")?.value || ""),
       endpoint: cleanupSpacing(document.querySelector("#pronEndpoint")?.value || ""),
       apiKey: document.querySelector("#pronKey")?.value || ""
+    },
+    coach: {
+      enabled: Boolean(document.querySelector("#coachEnabled")?.checked),
+      useAi: Boolean(document.querySelector("#coachUseAi")?.checked),
+      tone: document.querySelector("#coachTone")?.value || "balanced",
+      singleWeaknessOnly: Boolean(document.querySelector("#coachSingleWeaknessOnly")?.checked)
     }
   };
   state.setup = mergeSetupConfig(getDefaultSetupConfig(), setup);

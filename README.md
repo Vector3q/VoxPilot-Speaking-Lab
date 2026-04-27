@@ -19,7 +19,8 @@ VoxPilot Speaking Lab is a no-login, no-database, ready-to-run local speaking pr
 - Same-question retry comparison
 - Local history and weakness tracking
 - Adaptive Ladder training with diagnostic placement, daily tasks, and step progression
-- Setup page for optional AI scoring and external pronunciation assessment
+- Coach Capsule for diagnosis, micro-drill, retake, and before/after reflection
+- Setup page separates Basic local features from optional AI scoring, AI Coach, and external pronunciation assessment
 
 ## Run Locally
 
@@ -79,6 +80,26 @@ The `Ladder` module turns single-question practice into a progressive training p
 - Recommends drills such as Chunk Repeat, Example Builder, Pronunciation Focus, and Speed Control
 - Promotes the learner after stable recent performance instead of a single lucky score
 
+## Coach Capsule
+
+Coach Capsule is an on-demand retake loop that appears after a scored attempt, inside Ladder fixes, and from history review.
+
+Basic mode works without any API:
+
+- Diagnoses one primary weakness from a fixed taxonomy
+- Maps the weakness to a micro-drill
+- Keeps the first answer intact
+- Lets the learner retake the same task
+- Compares before and after locally
+- Updates a local Coach Profile in `localStorage`
+
+AI mode is optional:
+
+- Reuses the AI content scoring setup
+- Generates a stricter diagnosis and retake mission
+- Falls back to Basic local rules if the API call fails
+- Does not store API keys in the repository
+
 ## API Setup
 
 The app includes a `Setup` page where users can enter their own API keys, endpoints, and models.
@@ -87,6 +108,7 @@ Supported options:
 
 - OpenAI Responses API
 - OpenAI-compatible Chat Completions endpoint
+- Agentic Coach diagnosis and drill generation
 - Azure Speech Pronunciation Assessment
 - Custom pronunciation scoring JSON endpoint
 
