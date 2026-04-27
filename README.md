@@ -133,6 +133,18 @@ Security design:
 
 If deployed as a public site, requests are made from the user's browser with the user's own key. Some services may block direct browser requests due to CORS; in that case, use a custom backend proxy or custom endpoint.
 
+## Deploy to Vercel
+
+This project is a static browser app in production. `server.js` is only for local development.
+
+Vercel uses `vercel.json` to run:
+
+```bash
+npm run build
+```
+
+The build copies the deployable files into `dist/`, and Vercel serves that folder as static output. This avoids treating `server.js` as a Serverless Function.
+
 ## Project Structure
 
 ```text
@@ -148,7 +160,9 @@ If deployed as a public site, requests are made from the user's browser with the
 ├── server.js
 ├── package.json
 ├── scripts/
+│   ├── build-static.mjs
 │   └── smoke-test.mjs
+├── vercel.json
 ├── README.md
 ├── README.zh-CN.md
 └── LICENSE

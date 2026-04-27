@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js 5173",
+    "build": "node scripts/build-static.mjs",
     "test": "node scripts/smoke-test.mjs"
   },
   "engines": {

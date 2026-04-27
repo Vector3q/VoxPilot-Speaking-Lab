@@ -133,6 +133,18 @@ AI 模式是可选增强：
 
 如果部署到公开网站，用户填写的 key 会从用户自己的浏览器发起请求。部分服务可能有 CORS 限制；遇到这种情况，可以用自定义后端代理或 custom endpoint。
 
+## 部署到 Vercel
+
+生产环境里，这个项目是静态浏览器应用。`server.js` 只用于本地开发。
+
+Vercel 会根据 `vercel.json` 运行：
+
+```bash
+npm run build
+```
+
+构建脚本会把可部署文件复制到 `dist/`，然后 Vercel 只把 `dist/` 当作静态输出目录发布。这样可以避免把 `server.js` 当成 Serverless Function 调用。
+
 ## 项目结构
 
 ```text
@@ -148,7 +160,9 @@ AI 模式是可选增强：
 ├── server.js
 ├── package.json
 ├── scripts/
+│   ├── build-static.mjs
 │   └── smoke-test.mjs
+├── vercel.json
 ├── README.md
 ├── README.zh-CN.md
 └── LICENSE
