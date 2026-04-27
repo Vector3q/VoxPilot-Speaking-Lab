@@ -843,6 +843,89 @@ textarea {
   padding: clamp(18px, 2.5vw, 26px);
 }
 
+.ladder-board {
+  display: grid;
+  gap: 16px;
+}
+
+.ladder-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 16px;
+  align-items: stretch;
+  padding: clamp(18px, 2.5vw, 26px);
+  border: 1px solid rgba(217, 226, 236, 0.9);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow);
+}
+
+.ladder-hero h2 {
+  margin: 0;
+  font-size: clamp(26px, 4vw, 42px);
+  line-height: 1.08;
+}
+
+.ladder-hero p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.ladder-score {
+  display: grid;
+  align-content: center;
+  min-height: 120px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfdff;
+}
+
+.ladder-score span,
+.ladder-progress span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ladder-score strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 38px;
+}
+
+.ladder-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.ladder-progress {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.ladder-plan {
+  display: grid;
+  gap: 10px;
+}
+
+.ladder-task {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.ladder-task.done {
+  background: #f8fafc;
+}
+
 .setup-board {
   display: grid;
   gap: 16px;
@@ -1037,7 +1120,9 @@ textarea {
   .workspace,
   .control-band,
   .feedback-grid,
-  .full-setup {
+  .full-setup,
+  .ladder-hero,
+  .ladder-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1066,7 +1151,8 @@ textarea {
   .practice-header,
   .history-top,
   .bank-item,
-  .history-item {
+  .history-item,
+  .ladder-task {
     grid-template-columns: 1fr;
   }
 

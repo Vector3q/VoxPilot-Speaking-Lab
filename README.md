@@ -18,6 +18,7 @@ VoxPilot Speaking Lab is a no-login, no-database, ready-to-run local speaking pr
 - Suspected pronunciation focus points: `/θ/`, `/r/`, `/l/`, final consonants, consonant clusters, and more
 - Same-question retry comparison
 - Local history and weakness tracking
+- Adaptive Ladder training with diagnostic placement, daily tasks, and step progression
 - Setup page for optional AI scoring and external pronunciation assessment
 
 ## Run Locally
@@ -66,6 +67,17 @@ After recording, the app also analyzes:
 - Pause count
 - Estimated SNR
 - Articulation rate excluding silence
+
+## Adaptive Ladder
+
+The `Ladder` module turns single-question practice into a progressive training path:
+
+- Starts with a 6-question diagnostic set
+- Places the learner from L1 Survival to L5 Advanced
+- Generates a daily plan with warm-up, core step, weakness drill, and checkpoint
+- Updates progress after each scored answer
+- Recommends drills such as Chunk Repeat, Example Builder, Pronunciation Focus, and Speed Control
+- Promotes the learner after stable recent performance instead of a single lucky score
 
 ## API Setup
 

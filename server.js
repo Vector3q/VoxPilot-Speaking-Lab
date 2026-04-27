@@ -49,7 +49,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(requestedPort, () => {
-  console.log(`TOEFL Speaking Lab is running at http://localhost:${requestedPort}`);
+  console.log(`VoxPilot Speaking Lab is running at http://localhost:${requestedPort}`);
 });
 
 server.on("error", (error) => {

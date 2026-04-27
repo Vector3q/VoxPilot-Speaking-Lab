@@ -896,7 +896,68 @@ QUESTION_BANK.interview.push(...EXTRA_INTERVIEW_QUESTIONS);
 
 const STORAGE_KEY = "toefl-speaking-lab-history-v1";
 const SETUP_STORAGE_KEY = "toefl-speaking-lab-setup-v1";
+const LADDER_STORAGE_KEY = "voxpilot-ladder-profile-v1";
 const SpeechRecognitionApi = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+const LADDER_LEVELS = {
+  1: { name: "L1 Survival", target: "先能稳定开口，复述短句，回答完整句。", threshold: 3.2 },
+  2: { name: "L2 Stable", target: "减少漏词，回答里稳定加入明确理由。", threshold: 3.8 },
+  3: { name: "L3 Developing", target: "把理由、例子和结果说完整。", threshold: 4.4 },
+  4: { name: "L4 Test Ready", target: "在限时状态下保持自然节奏和清楚表达。", threshold: 5 },
+  5: { name: "L5 Advanced", target: "打磨高分表达、自然语音和复杂内容。", threshold: 5.4 }
+};
+
+const LADDER_STEPS = {
+  1: [
+    { id: "l1-s1", title: "Short Repeat", type: "repeat", difficulty: "Easy", drill: "chunk-repeat", goal: "复述 8-10 词短句，先不追求快。" },
+    { id: "l1-s2", title: "One Clear Sentence", type: "interview", difficulty: "Easy", drill: "answer-skeleton", goal: "用一个完整句直接回答问题。" },
+    { id: "l1-s3", title: "Reason Starter", type: "interview", difficulty: "Easy", drill: "because-builder", goal: "每个回答都加入 because 理由。" },
+    { id: "l1-s4", title: "Clean Ending", type: "repeat", difficulty: "Easy", drill: "pronunciation-focus", goal: "把词尾音和关键词说清楚。" },
+    { id: "l1-s5", title: "Mini Check", type: "mixed", difficulty: "Easy", drill: "checkpoint", goal: "完成短复述和简单问答小测。" }
+  ],
+  2: [
+    { id: "l2-s1", title: "Campus Repeat", type: "repeat", difficulty: "Medium", drill: "chunk-repeat", goal: "复述 12-15 词校园句，减少漏词。" },
+    { id: "l2-s2", title: "Because Chain", type: "interview", difficulty: "Easy", drill: "because-builder", goal: "观点后立刻给出清楚理由。" },
+    { id: "l2-s3", title: "First Example", type: "interview", difficulty: "Medium", drill: "example-builder", goal: "每题加入一个具体例子。" },
+    { id: "l2-s4", title: "Speed Control", type: "interview", difficulty: "Medium", drill: "speed-control", goal: "控制在自然语速区间，减少停顿。" },
+    { id: "l2-s5", title: "Stability Check", type: "mixed", difficulty: "Medium", drill: "checkpoint", goal: "连续完成复述和问答，检查稳定性。" }
+  ],
+  3: [
+    { id: "l3-s1", title: "Academic Repeat", type: "repeat", difficulty: "Hard", drill: "chunk-repeat", goal: "复述学术句，保留内容词和语序。" },
+    { id: "l3-s2", title: "Example Builder", type: "interview", difficulty: "Medium", drill: "example-builder", goal: "例子要有人、事、结果。" },
+    { id: "l3-s3", title: "Result Sentence", type: "interview", difficulty: "Medium", drill: "result-builder", goal: "例子后补一句结果或意义。" },
+    { id: "l3-s4", title: "Language Upgrade", type: "interview", difficulty: "Hard", drill: "language-upgrade", goal: "减少重复词，加入更自然表达。" },
+    { id: "l3-s5", title: "Timed Check", type: "mixed", difficulty: "Medium", drill: "checkpoint", goal: "在限时下完成完整结构。" }
+  ],
+  4: [
+    { id: "l4-s1", title: "Hard Repeat", type: "repeat", difficulty: "Hard", drill: "shadow-sprint", goal: "保持高准确率和自然节奏。" },
+    { id: "l4-s2", title: "Timed Interview", type: "interview", difficulty: "Hard", drill: "timed-response", goal: "45-60 秒内说完整。" },
+    { id: "l4-s3", title: "Fluency Polish", type: "interview", difficulty: "Hard", drill: "speed-control", goal: "减少填充词和长停顿。" },
+    { id: "l4-s4", title: "Pronunciation Polish", type: "mixed", difficulty: "Hard", drill: "pronunciation-focus", goal: "针对疑似音素和词尾音补弱。" },
+    { id: "l4-s5", title: "Mock Segment", type: "mixed", difficulty: "Hard", drill: "checkpoint", goal: "完成小段模考并保持稳定。" }
+  ],
+  5: [
+    { id: "l5-s1", title: "Precision Repeat", type: "repeat", difficulty: "Hard", drill: "shadow-sprint", goal: "追求接近原句的高精度复述。" },
+    { id: "l5-s2", title: "Advanced Interview", type: "interview", difficulty: "Hard", drill: "language-upgrade", goal: "回答更自然、有层次。" },
+    { id: "l5-s3", title: "Compression", type: "interview", difficulty: "Hard", drill: "timed-response", goal: "用更少废话表达更多信息。" },
+    { id: "l5-s4", title: "Voice Control", type: "mixed", difficulty: "Hard", drill: "pronunciation-focus", goal: "细化清晰度、节奏和重音。" },
+    { id: "l5-s5", title: "High Score Check", type: "mixed", difficulty: "Hard", drill: "checkpoint", goal: "冲刺高分稳定输出。" }
+  ]
+};
+
+const DRILL_LIBRARY = {
+  "chunk-repeat": { label: "Chunk Repeat", tip: "把句子拆成 2-3 个意群，先逐块复述，再整句复述。" },
+  "shadow-sprint": { label: "Shadow Sprint", tip: "先听一遍，再用接近原速跟读，重点模仿停顿和重音。" },
+  "answer-skeleton": { label: "Answer Skeleton", tip: "按 I prefer ___ because ___. For example, ___. 说完整。" },
+  "because-builder": { label: "Because Builder", tip: "第一句直接回答，第二句必须用 because 给理由。" },
+  "example-builder": { label: "Example Builder", tip: "例子里说清楚 when、where、what happened、result。" },
+  "result-builder": { label: "Result Builder", tip: "例子后补一句结果：This helped me... / As a result..." },
+  "pronunciation-focus": { label: "Pronunciation Focus", tip: "根据报告里的疑似音素，慢速重读内容词和词尾音。" },
+  "speed-control": { label: "Speed Control", tip: "目标语速 100-150 WPM，长停顿少于 1.2 秒。" },
+  "language-upgrade": { label: "Language Upgrade", tip: "把重复动词换成更具体表达，加入一个从句。" },
+  "timed-response": { label: "Timed Response", tip: "用 45-60 秒完成观点、理由、例子、结果。" },
+  "checkpoint": { label: "Checkpoint", tip: "像小测一样完成，不中途换题，不看答案。" }
+};
 
 const state = {
   tab: "practice",
@@ -926,6 +987,7 @@ const state = {
   timerId: null,
   lastSavedSignature: "",
   setup: loadSetupConfig(),
+  ladder: loadLadderProfile(),
   bankType: "all",
   bankDifficulty: "all",
   toast: "",
@@ -966,6 +1028,7 @@ function renderTopbar() {
   const history = loadHistory();
   const average = averageScore(history);
   const todayCount = history.filter((item) => isToday(item.createdAt)).length;
+  const ladderLabel = state.ladder && state.ladder.diagnosed ? (LADDER_LEVELS[state.ladder.level] || LADDER_LEVELS[1]).name : "未诊断";
   return `
     <header class="topbar">
       <div class="brand">
@@ -979,6 +1042,7 @@ function renderTopbar() {
         <span class="stat-pill"><strong>${todayCount}</strong> 今日练习</span>
         <span class="stat-pill"><strong>${average || "-"}</strong> 近况均分</span>
         <span class="stat-pill"><strong>${history.length}</strong> 本地记录</span>
+        <span class="stat-pill"><strong>${escapeHtml(ladderLabel)}</strong> Ladder</span>
         <span class="stat-pill"><strong>${QUESTION_BANK.repeat.length + QUESTION_BANK.interview.length}</strong> 仿真题</span>
       </div>
     </header>
@@ -987,6 +1051,7 @@ function renderTopbar() {
 
 function renderNav() {
   const tabs = [
+    ["ladder", "Ladder"],
     ["practice", "练习台"],
     ["full", "完整练习"],
     ["bank", "题库"],
@@ -1009,6 +1074,7 @@ function renderNav() {
 }
 
 function renderActiveTab() {
+  if (state.tab === "ladder") return renderLadderView();
   if (state.tab === "full") return renderFullRunView();
   if (state.tab === "bank") return renderBankView();
   if (state.tab === "history") return renderHistoryView();
@@ -1059,6 +1125,156 @@ function renderMiniStats() {
         <strong>${history.length ? "再练" : "开始"}</strong>
       </div>
     </div>
+  `;
+}
+
+function renderLadderView() {
+  const profile = state.ladder;
+  if (!profile.diagnosed) return renderLadderDiagnostic(profile);
+
+  const level = LADDER_LEVELS[profile.level] || LADDER_LEVELS[1];
+  const step = getCurrentLadderStep(profile);
+  const plan = getTodayLadderPlan(profile);
+  const recentAverage = averageScore((profile.recent || []).slice(0, 8));
+  const progress = getStepProgress(profile, step.id);
+  const recommendation = DRILL_LIBRARY[profile.recommendedDrill] || DRILL_LIBRARY["example-builder"];
+
+  return `
+    <section class="ladder-board">
+      <div class="ladder-hero">
+        <div>
+          <div class="badge-row">
+            <span class="badge violet">VoxPilot Ladder</span>
+            <span class="badge blue">${escapeHtml(level.name)}</span>
+            <span class="badge orange">Step ${profile.step}/5</span>
+          </div>
+          <h2>${escapeHtml(step.title)}</h2>
+          <p>${escapeHtml(level.target)}</p>
+        </div>
+        <div class="ladder-score">
+          <span>Recent Avg</span>
+          <strong>${recentAverage || "-"}</strong>
+        </div>
+      </div>
+
+      <div class="ladder-grid">
+        <section class="feedback-section">
+          <h3>Current Step</h3>
+          <p class="upgrade-answer">${escapeHtml(step.goal)}</p>
+          <div class="ladder-progress">
+            <div class="progress-track">
+              <div class="progress-fill" style="width: ${Math.min(100, progress.points * 33.34)}%"></div>
+            </div>
+            <span>${progress.points}/3 stable passes to level up this step</span>
+          </div>
+          <div class="item-meta">
+            <span class="badge">${escapeHtml(DRILL_LIBRARY[step.drill].label)}</span>
+            <span class="badge blue">${escapeHtml(step.difficulty)}</span>
+          </div>
+        </section>
+
+        <section class="feedback-section">
+          <h3>Recommended Fix</h3>
+          <p class="upgrade-answer">${escapeHtml(recommendation.tip)}</p>
+          <div class="item-meta">
+            <span class="badge orange">${escapeHtml(recommendation.label)}</span>
+            ${(profile.weaknesses || []).slice(0, 3).map((item) => `<span class="badge blue">${escapeHtml(item)}</span>`).join("")}
+          </div>
+        </section>
+      </div>
+
+      <section class="feedback-section wide-section">
+        <div class="history-top">
+          <div>
+            <h3>Today's Ladder</h3>
+            <p class="compact-copy">按顺序练：热身、核心任务、补弱、检查点。每题评分后会自动更新阶梯。</p>
+          </div>
+          <button class="ghost-button" data-reset-ladder-plan="true"><span class="button-icon">↻</span>换一组</button>
+        </div>
+        <div class="ladder-plan">
+          ${plan.tasks
+            .map((task, index) => renderLadderTask(task, index))
+            .join("")}
+        </div>
+      </section>
+
+      <section class="feedback-section wide-section">
+        <div class="history-top">
+          <div>
+            <h3>Level Control</h3>
+            <p class="compact-copy">想重新定位水平，可以重做 6 题诊断。</p>
+          </div>
+          <button class="danger-button" data-reset-ladder="true"><span class="button-icon">×</span>重置 Ladder</button>
+        </div>
+      </section>
+    </section>
+  `;
+}
+
+function renderLadderDiagnostic(profile) {
+  const diagnostic = profile.diagnostic || null;
+  const active = diagnostic && diagnostic.active;
+  const total = active ? diagnostic.sequence.length : 6;
+  const done = active ? diagnostic.results.length : 0;
+  const currentQuestion = active ? getQuestionById(diagnostic.sequence[Math.min(diagnostic.index, diagnostic.sequence.length - 1)]) : null;
+
+  return `
+    <section class="ladder-board">
+      <div class="ladder-hero">
+        <div>
+          <div class="badge-row">
+            <span class="badge violet">VoxPilot Ladder</span>
+            <span class="badge blue">Diagnostic</span>
+          </div>
+          <h2>Start From Your Real Level</h2>
+          <p>先做 6 题短诊断：3 道复述 + 3 道问答。系统会根据稳定表现分配等级和第一阶段训练。</p>
+        </div>
+        <div class="ladder-score">
+          <span>Progress</span>
+          <strong>${done}/${total}</strong>
+        </div>
+      </div>
+
+      <section class="feedback-section wide-section">
+        <h3>${active ? "Continue Diagnostic" : "Diagnostic Set"}</h3>
+        <p class="compact-copy">
+          ${active && currentQuestion ? `下一题：${escapeHtml(currentQuestion.text)}` : "诊断会从简单题开始，逐步覆盖中等和高难题。"}
+        </p>
+        <div class="summary-grid">
+          <div class="summary-tile"><span>Repeat</span><strong>3</strong></div>
+          <div class="summary-tile"><span>Interview</span><strong>3</strong></div>
+          <div class="summary-tile"><span>Time</span><strong>8m</strong></div>
+          <div class="summary-tile"><span>Result</span><strong>Level</strong></div>
+        </div>
+        <div class="control-actions" style="margin-top: 16px">
+          <button class="primary-button" data-ladder-diagnostic-next="true">
+            <span class="button-icon">▶</span>${active ? "继续诊断" : "开始诊断"}
+          </button>
+          ${active ? `<button class="ghost-button" data-reset-ladder="true"><span class="button-icon">×</span>重新开始</button>` : ""}
+        </div>
+      </section>
+    </section>
+  `;
+}
+
+function renderLadderTask(task, index) {
+  const question = getQuestionById(task.questionId);
+  const completed = task.completed ? "done" : "";
+  return `
+    <article class="ladder-task ${completed}">
+      <div>
+        <div class="item-meta">
+          <span class="badge">${escapeHtml(task.label)}</span>
+          <span class="badge blue">${question ? (question.type === "repeat" ? "Repeat" : "Interview") : "Mixed"}</span>
+          <span class="badge orange">${escapeHtml(task.drillLabel)}</span>
+        </div>
+        <p class="item-title">${escapeHtml(task.goal)}</p>
+        <p class="compact-copy">${question ? escapeHtml(question.text) : "Question will be selected when you start."}</p>
+      </div>
+      <button class="${task.completed ? "ghost-button" : "small-button"}" data-ladder-plan-index="${index}">
+        ${task.completed ? "再练" : "开始"}
+      </button>
+    </article>
   `;
 }
 
@@ -1713,6 +1929,319 @@ function classifyIssue(issue) {
   return "综合问题";
 }
 
+function continueLadderDiagnostic() {
+  if (!state.ladder.diagnostic || !state.ladder.diagnostic.active) {
+    state.ladder = {
+      ...getDefaultLadderProfile(),
+      diagnostic: createDiagnosticSession()
+    };
+    saveLadderProfile();
+  }
+
+  const diagnostic = state.ladder.diagnostic;
+  if (diagnostic.index >= diagnostic.sequence.length) {
+    finalizeLadderDiagnostic();
+    state.tab = "ladder";
+    render();
+    return;
+  }
+
+  const questionId = diagnostic.sequence[diagnostic.index];
+  state.ladder.currentTask = {
+    source: "diagnostic",
+    questionId,
+    diagnosticIndex: diagnostic.index,
+    startedAt: new Date().toISOString()
+  };
+  saveLadderProfile();
+  practiceQuestion(questionId);
+}
+
+function resetLadderWithConfirm() {
+  const ok = window.confirm("确定重置 Ladder 诊断和训练进度吗？历史记录不会删除。");
+  if (!ok) return;
+  state.ladder = getDefaultLadderProfile();
+  saveLadderProfile();
+  state.tab = "ladder";
+  render();
+}
+
+function resetLadderPlan() {
+  state.ladder.dailyPlan = null;
+  saveLadderProfile();
+  render();
+}
+
+function startLadderPlanTask(index) {
+  const plan = getTodayLadderPlan(state.ladder);
+  const task = plan.tasks[index];
+  if (!task) return;
+  const questionId = task.questionId || selectQuestionForLadderTask(task).id;
+  task.questionId = questionId;
+  state.ladder.currentTask = {
+    source: "plan",
+    planDate: plan.date,
+    planIndex: index,
+    stepId: task.stepId,
+    drill: task.drill,
+    questionId,
+    startedAt: new Date().toISOString()
+  };
+  saveLadderProfile();
+  practiceQuestion(questionId);
+}
+
+function updateLadderAfterFeedback(question, feedback, transcript) {
+  const profile = state.ladder || getDefaultLadderProfile();
+  const task = profile.currentTask || null;
+  const entry = {
+    createdAt: new Date().toISOString(),
+    questionId: question.id,
+    type: question.type,
+    score: feedback.score,
+    detailScores: feedback.detailScores || [],
+    issues: feedback.issues || [],
+    pronunciation: feedback.pronunciation || null,
+    source: task ? task.source : "free",
+    stepId: task ? task.stepId : null,
+    drill: task ? task.drill : null,
+    transcriptFingerprint: fingerprintText(transcript)
+  };
+
+  profile.recent = [entry, ...(profile.recent || [])].slice(0, 40);
+  profile.weaknesses = inferLadderWeaknesses(profile.recent);
+  profile.recommendedDrill = recommendDrillFromFeedback(feedback);
+
+  if (task && task.source === "diagnostic" && profile.diagnostic && profile.diagnostic.active) {
+    const alreadyRecorded = profile.diagnostic.results.some((item) => item.diagnosticIndex === task.diagnosticIndex);
+    if (!alreadyRecorded) {
+      profile.diagnostic.results.push({ ...entry, diagnosticIndex: task.diagnosticIndex });
+      profile.diagnostic.index += 1;
+    }
+    profile.currentTask = null;
+    if (profile.diagnostic.index >= profile.diagnostic.sequence.length) {
+      applyDiagnosticResult(profile);
+    }
+    state.ladder = profile;
+    saveLadderProfile();
+    return;
+  }
+
+  if (profile.diagnosed && task && task.source === "plan") {
+    markLadderPlanTaskComplete(profile, task.planIndex);
+    updateLadderStepProgress(profile, feedback, task.stepId);
+    profile.currentTask = null;
+  }
+
+  state.ladder = profile;
+  saveLadderProfile();
+}
+
+function createDiagnosticSession() {
+  const sequence = [
+    selectQuestion({ type: "repeat", difficulty: "Easy" }).id,
+    selectQuestion({ type: "repeat", difficulty: "Medium" }).id,
+    selectQuestion({ type: "repeat", difficulty: "Hard" }).id,
+    selectQuestion({ type: "interview", difficulty: "Easy" }).id,
+    selectQuestion({ type: "interview", difficulty: "Medium" }).id,
+    selectQuestion({ type: "interview", difficulty: "Hard" }).id
+  ];
+  return {
+    active: true,
+    sequence,
+    index: 0,
+    results: [],
+    startedAt: new Date().toISOString()
+  };
+}
+
+function finalizeLadderDiagnostic() {
+  applyDiagnosticResult(state.ladder);
+  saveLadderProfile();
+}
+
+function applyDiagnosticResult(profile) {
+  const results = profile.diagnostic ? profile.diagnostic.results : [];
+  const avg = averageNumeric(results.map((item) => item.score));
+  const repeatAvg = averageNumeric(results.filter((item) => item.type === "repeat").map((item) => item.score));
+  const interviewAvg = averageNumeric(results.filter((item) => item.type === "interview").map((item) => item.score));
+  const pronAvg = averageNumeric(results.map((item) => item.pronunciation ? item.pronunciation.score * 6 : item.score));
+  const adjusted = avg * 0.72 + repeatAvg * 0.1 + interviewAvg * 0.1 + pronAvg * 0.08;
+  let level = 1;
+  if (adjusted >= 5.25) level = 5;
+  else if (adjusted >= 4.75) level = 4;
+  else if (adjusted >= 4.05) level = 3;
+  else if (adjusted >= 3.25) level = 2;
+
+  profile.diagnosed = true;
+  profile.level = level;
+  profile.step = 1;
+  profile.recommendedDrill = recommendDrillFromEntries(results);
+  profile.weaknesses = inferLadderWeaknesses(results);
+  profile.diagnostic = { ...profile.diagnostic, active: false, completedAt: new Date().toISOString(), level };
+  profile.dailyPlan = null;
+  profile.stepProgress = {};
+  profile.currentTask = null;
+}
+
+function getTodayLadderPlan(profile) {
+  const today = getDateKey();
+  if (profile.dailyPlan && profile.dailyPlan.date === today && profile.dailyPlan.tasks && profile.dailyPlan.tasks.length) {
+    return profile.dailyPlan;
+  }
+  profile.dailyPlan = buildLadderPlan(profile, today);
+  saveLadderProfile();
+  return profile.dailyPlan;
+}
+
+function buildLadderPlan(profile, date) {
+  const step = getCurrentLadderStep(profile);
+  const level = profile.level || 1;
+  const warmDifficulty = level <= 1 ? "Easy" : level <= 3 ? "Medium" : "Hard";
+  const fixDrill = profile.recommendedDrill || step.drill;
+  const fixType = drillPrefersRepeat(fixDrill) ? "repeat" : "interview";
+  const checkpointType = step.type === "repeat" ? "repeat" : step.type === "interview" ? "interview" : "mixed";
+  const tasks = [
+    createLadderTask("Warm-up", "chunk-repeat", "repeat", warmDifficulty, "先用一题复述热身，目标是清楚和完整。", step.id),
+    createLadderTask("Core Step", step.drill, step.type, step.difficulty, step.goal, step.id),
+    createLadderTask("Fix Drill", fixDrill, fixType, step.difficulty, DRILL_LIBRARY[fixDrill].tip, step.id),
+    createLadderTask("Checkpoint", "checkpoint", checkpointType, step.difficulty, "像小测一样完成一题，检查今天的稳定度。", step.id)
+  ];
+  return { date, tasks };
+}
+
+function createLadderTask(label, drill, type, difficulty, goal, stepId) {
+  const question = selectQuestionForLadderTask({ type, difficulty, drill });
+  return {
+    label,
+    drill,
+    drillLabel: DRILL_LIBRARY[drill].label,
+    type,
+    difficulty,
+    goal,
+    stepId,
+    questionId: question.id,
+    completed: false
+  };
+}
+
+function selectQuestionForLadderTask(task) {
+  if (task.type === "mixed") {
+    const type = Math.random() > 0.45 ? "interview" : "repeat";
+    return selectQuestion({ type, difficulty: task.difficulty });
+  }
+  return selectQuestion({ type: task.type, difficulty: task.difficulty });
+}
+
+function selectQuestion({ type, difficulty }) {
+  const pool = type === "repeat" ? QUESTION_BANK.repeat : QUESTION_BANK.interview;
+  const filtered = pool.filter((item) => !difficulty || item.difficulty === difficulty);
+  return randomItem(filtered.length ? filtered : pool);
+}
+
+function getQuestionById(id) {
+  return [...QUESTION_BANK.repeat, ...QUESTION_BANK.interview].find((item) => item.id === id) || null;
+}
+
+function getCurrentLadderStep(profile) {
+  const levelSteps = LADDER_STEPS[profile.level] || LADDER_STEPS[1];
+  return levelSteps[Math.max(0, Math.min(levelSteps.length - 1, (profile.step || 1) - 1))];
+}
+
+function getStepProgress(profile, stepId) {
+  return (profile.stepProgress && profile.stepProgress[stepId]) || { points: 0, attempts: 0 };
+}
+
+function markLadderPlanTaskComplete(profile, planIndex) {
+  if (!profile.dailyPlan || !profile.dailyPlan.tasks || !profile.dailyPlan.tasks[planIndex]) return;
+  profile.dailyPlan.tasks[planIndex].completed = true;
+}
+
+function updateLadderStepProgress(profile, feedback, stepId) {
+  if (!profile.stepProgress) profile.stepProgress = {};
+  const current = profile.stepProgress[stepId] || { points: 0, attempts: 0 };
+  const threshold = (LADDER_LEVELS[profile.level] || LADDER_LEVELS[1]).threshold;
+  const weakDimension = getWeakestDetailScore(feedback.detailScores || []);
+  current.attempts += 1;
+  if (feedback.score >= threshold && (!weakDimension || weakDimension.score >= 0.62)) current.points += 1;
+  else current.points = Math.max(0, current.points - 1);
+  profile.stepProgress[stepId] = current;
+
+  if (current.points >= 3) advanceLadderStep(profile);
+}
+
+function advanceLadderStep(profile) {
+  const maxStep = (LADDER_STEPS[profile.level] || LADDER_STEPS[1]).length;
+  if (profile.step < maxStep) {
+    profile.step += 1;
+  } else if (profile.level < 5) {
+    profile.level += 1;
+    profile.step = 1;
+  }
+  profile.dailyPlan = null;
+}
+
+function recommendDrillFromFeedback(feedback) {
+  const weakest = getWeakestDetailScore(feedback.detailScores || []);
+  if (!weakest) return "example-builder";
+  return drillForWeakness(weakest.label);
+}
+
+function recommendDrillFromEntries(entries) {
+  const labels = {};
+  entries.forEach((entry) => {
+    const weakest = getWeakestDetailScore(entry.detailScores || []);
+    if (weakest) labels[weakest.label] = (labels[weakest.label] || 0) + 1;
+  });
+  const top = Object.entries(labels).sort((a, b) => b[1] - a[1])[0];
+  return top ? drillForWeakness(top[0]) : "example-builder";
+}
+
+function getWeakestDetailScore(detailScores) {
+  const numeric = detailScores.filter((item) => Number.isFinite(Number(item.score)));
+  if (!numeric.length) return null;
+  return numeric.sort((a, b) => Number(a.score) - Number(b.score))[0];
+}
+
+function drillForWeakness(label) {
+  if (/听辨|完整|语序|复述|Completeness|Listening/.test(label)) return "chunk-repeat";
+  if (/发音|清晰|Pronunciation|pacing|节奏/.test(label)) return "pronunciation-focus";
+  if (/流利|Fluency|语速|停顿/.test(label)) return "speed-control";
+  if (/任务|回应|Task/.test(label)) return "answer-skeleton";
+  if (/展开|Development|例子/.test(label)) return "example-builder";
+  if (/组织|Organization|逻辑/.test(label)) return "result-builder";
+  if (/语言|Language|词汇/.test(label)) return "language-upgrade";
+  return "example-builder";
+}
+
+function inferLadderWeaknesses(entries) {
+  const counts = {};
+  entries.forEach((entry) => {
+    const weakest = getWeakestDetailScore(entry.detailScores || []);
+    if (weakest) counts[weakest.label] = (counts[weakest.label] || 0) + 1;
+    (entry.issues || []).forEach((issue) => {
+      const key = classifyIssue(issue);
+      counts[key] = (counts[key] || 0) + 0.5;
+    });
+  });
+  return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label]) => label);
+}
+
+function drillPrefersRepeat(drill) {
+  return ["chunk-repeat", "shadow-sprint", "pronunciation-focus"].includes(drill);
+}
+
+function getDateKey() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function averageNumeric(values) {
+  const numeric = values.map(Number).filter(Number.isFinite);
+  if (!numeric.length) return 0;
+  return numeric.reduce((sum, value) => sum + value, 0) / numeric.length;
+}
+
 function bindEvents() {
   document.querySelectorAll("[data-tab]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1777,9 +2306,16 @@ function bindEvents() {
   bindClick("[data-clear-history]", () => clearHistoryWithConfirm());
   bindClick("[data-save-setup]", () => saveSetupFromForm());
   bindClick("[data-clear-setup]", () => clearSetupWithConfirm());
+  bindClick("[data-ladder-diagnostic-next]", () => continueLadderDiagnostic());
+  bindClick("[data-reset-ladder]", () => resetLadderWithConfirm());
+  bindClick("[data-reset-ladder-plan]", () => resetLadderPlan());
 
   document.querySelectorAll("[data-practice-question]").forEach((button) => {
     button.addEventListener("click", () => practiceQuestion(button.dataset.practiceQuestion));
+  });
+
+  document.querySelectorAll("[data-ladder-plan-index]").forEach((button) => {
+    button.addEventListener("click", () => startLadderPlanTask(Number(button.dataset.ladderPlanIndex)));
   });
 
   document.querySelectorAll("[data-review-history]").forEach((button) => {
@@ -2008,6 +2544,7 @@ async function analyzeCurrent() {
       rubricProfile: feedback.rubricProfile,
       comparison: feedback.comparison
     });
+    updateLadderAfterFeedback(question, feedback, transcript);
     state.lastSavedSignature = signature;
   }
 
@@ -3292,6 +3829,46 @@ function getFilteredQuestions() {
     const difficultyMatch = state.bankDifficulty === "all" || item.difficulty === state.bankDifficulty;
     return typeMatch && difficultyMatch;
   });
+}
+
+function getDefaultLadderProfile() {
+  return {
+    diagnosed: false,
+    level: 1,
+    step: 1,
+    recommendedDrill: "example-builder",
+    weaknesses: [],
+    recent: [],
+    stepProgress: {},
+    dailyPlan: null,
+    currentTask: null,
+    diagnostic: null
+  };
+}
+
+function loadLadderProfile() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LADDER_STORAGE_KEY) || "{}");
+    return normalizeLadderProfile(saved);
+  } catch (error) {
+    return getDefaultLadderProfile();
+  }
+}
+
+function normalizeLadderProfile(saved) {
+  const base = getDefaultLadderProfile();
+  const profile = { ...base, ...(saved || {}) };
+  profile.level = clamp(1, 5, Number(profile.level) || 1);
+  profile.step = clamp(1, 5, Number(profile.step) || 1);
+  profile.weaknesses = Array.isArray(profile.weaknesses) ? profile.weaknesses : [];
+  profile.recent = Array.isArray(profile.recent) ? profile.recent : [];
+  profile.stepProgress = profile.stepProgress && typeof profile.stepProgress === "object" ? profile.stepProgress : {};
+  profile.recommendedDrill = DRILL_LIBRARY[profile.recommendedDrill] ? profile.recommendedDrill : "example-builder";
+  return profile;
+}
+
+function saveLadderProfile() {
+  localStorage.setItem(LADDER_STORAGE_KEY, JSON.stringify(state.ladder));
 }
 
 function loadHistory() {
