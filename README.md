@@ -14,10 +14,11 @@ VoxPilot Speaking Lab is a no-login, no-database, ready-to-run local speaking pr
 - 110 simulation questions: 60 repetition items and 50 interview items
 - Browser recording, playback, and speech recognition transcription
 - Local simulated 1-6 half-point scoring
-- Audio quality, pauses, pace, estimated SNR, and intelligibility diagnostics
-- Suspected pronunciation focus points: `/θ/`, `/r/`, `/l/`, final consonants, consonant clusters, and more
+- Audio quality, pauses, pace, estimated SNR, local intelligibility proxy, and scoring confidence diagnostics
+- Suspected pronunciation focus points in Basic mode, plus optional external phoneme-level scoring
 - Same-question retry comparison
 - Local history and weakness tracking
+- Local data management with redacted full export
 - Adaptive Ladder training with diagnostic placement, daily tasks, and step progression
 - Coach Capsule for diagnosis, micro-drill, retake, and before/after reflection
 - Setup page separates Basic local features from optional AI scoring, AI Coach, and external pronunciation assessment
@@ -38,9 +39,17 @@ If port 5173 is busy, the server will try 5174 automatically.
 
 Chrome or Edge is recommended. If browser speech recognition is unavailable, you can type or edit the transcript manually and then analyze it.
 
+Run the lightweight smoke test with:
+
+```bash
+npm.cmd test
+```
+
 ## Scoring
 
 The local scoring engine outputs simulated 1-6 half-point scores. It is not an official ETS scoring system.
+
+Each scored attempt also shows a scoring confidence panel. It explains whether the current feedback is backed by enough transcript length, audio duration, audio quality, browser ASR confidence, and optional external scoring signals.
 
 Listen and Repeat evaluates:
 
@@ -68,6 +77,8 @@ After recording, the app also analyzes:
 - Pause count
 - Estimated SNR
 - Articulation rate excluding silence
+
+In Basic mode, pronunciation is treated as a local intelligibility proxy rather than true phoneme-by-phoneme assessment. If an external pronunciation API is configured, returned phoneme scores are displayed separately and take priority in the pronunciation section.
 
 ## Adaptive Ladder
 
@@ -117,6 +128,7 @@ Security design:
 - API keys are not stored in source code
 - Configuration is saved only in the current browser's `localStorage`
 - Publishing the repo to GitHub will not expose personal keys
+- Full local data export redacts API keys and only records whether a key exists
 - If no API is configured, the app continues to use local scoring
 
 If deployed as a public site, requests are made from the user's browser with the user's own key. Some services may block direct browser requests due to CORS; in that case, use a custom backend proxy or custom endpoint.
@@ -126,10 +138,17 @@ If deployed as a public site, requests are made from the user's browser with the
 ```text
 .
 ├── app.js
+├── data/
+│   ├── question-bank.js
+│   └── training-config.js
+├── logic/
+│   └── scoring-engine.js
 ├── index.html
 ├── styles.css
 ├── server.js
 ├── package.json
+├── scripts/
+│   └── smoke-test.mjs
 ├── README.md
 ├── README.zh-CN.md
 └── LICENSE

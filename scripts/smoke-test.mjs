@@ -1,0 +1,163 @@
+import fs from "node:fs";
+import path from "node:path";
+import vm from "node:vm";
+import { fileURLToPath } from "node:url";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const dataPaths = [
+  path.join(root, "data", "question-bank.js"),
+  path.join(root, "data", "training-config.js"),
+  path.join(root, "logic", "scoring-engine.js")
+];
+const appPath = path.join(root, "app.js");
+const source = [
+  ...dataPaths.map((filePath) => fs.readFileSync(filePath, "utf8")),
+  fs.readFileSync(appPath, "utf8")
+].join("\n");
+
+function createLocalStorage() {
+  const store = new Map();
+  return {
+    getItem(key) {
+      return store.has(key) ? store.get(key) : null;
+    },
+    setItem(key, value) {
+      store.set(key, String(value));
+    },
+    removeItem(key) {
+      store.delete(key);
+    },
+    clear() {
+      store.clear();
+    }
+  };
+}
+
+const appElement = { innerHTML: "" };
+const noopElement = {
+  value: "",
+  textContent: "",
+  dataset: {},
+  style: {},
+  addEventListener() {},
+  click() {}
+};
+
+const context = {
+  console,
+  Blob,
+  URL: {
+    createObjectURL: () => "blob:mock",
+    revokeObjectURL() {}
+  },
+  crypto: {
+    randomUUID: () => "test-id"
+  },
+  localStorage: createLocalStorage(),
+  navigator: {},
+  SpeechSynthesisUtterance: function SpeechSynthesisUtterance(text) {
+    this.text = text;
+  },
+  window: {
+    SpeechRecognition: null,
+    webkitSpeechRecognition: null,
+    MediaRecorder: null,
+    speechSynthesis: {
+      cancel() {},
+      speak() {}
+    },
+    confirm: () => true,
+    setTimeout: (fn) => {
+      if (typeof fn === "function") fn();
+      return 0;
+    },
+    clearTimeout() {}
+  },
+  document: {
+    querySelector(selector) {
+      if (selector === "#app") return appElement;
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
+    createElement() {
+      return { ...noopElement };
+    }
+  },
+  setTimeout: (fn) => {
+    if (typeof fn === "function") fn();
+    return 0;
+  },
+  clearTimeout() {}
+};
+
+context.window.window = context.window;
+context.window.document = context.document;
+
+const expose = `
+globalThis.__voxpilot = {
+  state,
+  STORAGE_KEY,
+  COACH_PROFILE_STORAGE_KEY,
+  COACH_SESSIONS_STORAGE_KEY,
+  createInterviewFeedback,
+  buildScoringConfidence,
+  nextQuestion,
+  clearHistoryWithConfirm,
+  loadCoachSessions,
+  buildLocalDataSnapshot
+};
+`;
+
+vm.runInNewContext(`${source}\n${expose}`, context, {
+  filename: "app.js",
+  timeout: 5000
+});
+
+const api = context.__voxpilot;
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+assert(appElement.innerHTML.includes("VoxPilot Speaking Lab"), "initial render failed");
+
+const question = api.state.currentInterview;
+const transcript = "I prefer studying with classmates because I can get useful feedback. For example, last semester I prepared a presentation with two classmates. As a result, our presentation became clearer.";
+const feedback = api.createInterviewFeedback(question, transcript, 52, {
+  audioStats: null,
+  recognitionStats: { confidenceSamples: [], finalSegments: 0, interimSegments: 0 }
+});
+feedback.confidence = api.buildScoringConfidence(question, feedback, transcript, 52, {
+  audioStats: null,
+  recognitionStats: { confidenceSamples: [], finalSegments: 0, interimSegments: 0 }
+});
+assert(feedback.score >= 1 && feedback.score <= 6, "feedback score is outside 1-6");
+assert(["high", "medium", "low"].includes(feedback.confidence.level), "confidence level missing");
+
+api.state.coach.active = true;
+api.state.coach.phase = "complete";
+api.state.coach.original.questionId = api.state.currentRepeat.id;
+api.state.recordingTarget = "coach";
+api.nextQuestion();
+assert(api.state.recordingTarget === "main", "nextQuestion did not reset recording target");
+assert(api.state.coach.active === false, "nextQuestion did not clear coach state");
+
+context.localStorage.setItem(api.STORAGE_KEY, JSON.stringify([{ id: "h1" }]));
+context.localStorage.setItem(api.COACH_SESSIONS_STORAGE_KEY, JSON.stringify([{ id: "c1" }]));
+context.localStorage.setItem(api.COACH_PROFILE_STORAGE_KEY, JSON.stringify({ primaryWeakness: "exampleSpecificity" }));
+api.clearHistoryWithConfirm();
+assert(context.localStorage.getItem(api.STORAGE_KEY) === null, "history was not cleared");
+assert(context.localStorage.getItem(api.COACH_SESSIONS_STORAGE_KEY) === null, "coach sessions were not cleared");
+assert(context.localStorage.getItem(api.COACH_PROFILE_STORAGE_KEY) === null, "coach profile was not cleared");
+
+context.localStorage.setItem(api.STORAGE_KEY, JSON.stringify([{ id: "h2" }]));
+api.state.setup.ai.apiKey = "secret-key";
+const snapshot = api.buildLocalDataSnapshot();
+assert(snapshot.setup.ai.hasApiKey === true, "export should preserve key presence");
+assert(!JSON.stringify(snapshot).includes("secret-key"), "export leaked an API key");
+
+console.log("VoxPilot smoke test passed");

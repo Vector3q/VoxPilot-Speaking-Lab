@@ -5,7 +5,8 @@
   "description": "A no-login AI speaking practice lab for TOEFL-style repetition, interview, scoring, and pronunciation feedback.",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js 5173"
+    "dev": "node server.js 5173",
+    "test": "node scripts/smoke-test.mjs"
   },
   "engines": {
     "node": ">=18"

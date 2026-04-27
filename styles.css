@@ -609,6 +609,11 @@ textarea {
   font-size: 15px;
 }
 
+.subsection-title {
+  margin: 14px 0 8px;
+  font-size: 13px;
+}
+
 .feedback-section ul {
   display: grid;
   gap: 8px;
@@ -869,6 +874,47 @@ textarea {
 
 .setup-basic {
   border-left: 4px solid var(--teal);
+}
+
+.confidence-section {
+  margin-top: 14px;
+  border-left: 4px solid var(--blue);
+}
+
+.confidence-meter {
+  height: 8px;
+  margin: 6px 0 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5edf5;
+}
+
+.confidence-meter > div {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--orange), var(--blue));
+}
+
+.confidence-reasons {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.data-panel {
+  margin-bottom: 14px;
+  border-left: 4px solid var(--teal);
+}
+
+.compact-summary {
+  margin-top: 10px;
+}
+
+.compact-summary .summary-tile {
+  min-height: 82px;
 }
 
 .diff-line {
