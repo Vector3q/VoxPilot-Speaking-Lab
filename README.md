@@ -10,6 +10,7 @@ VoxPilot Speaking Lab is a no-login, no-database, ready-to-run local speaking pr
 
 - Listen and Repeat practice
 - Take an Interview practice
+- Start Easy beginner mode with 4-step local-only scaffolding
 - 11-item full practice mode
 - 110 simulation questions: 60 repetition items and 50 interview items
 - Browser recording, playback, and speech recognition transcription
@@ -48,6 +49,8 @@ npm.cmd test
 ## Scoring
 
 The local scoring engine outputs simulated 1-6 half-point scores. It is not an official ETS scoring system.
+
+`Start Easy` uses lighter local checks for steps 1-3: Pass, Almost, or Try Again. Its fourth step returns to the full local scoring engine. It does not force AI scoring or external pronunciation scoring.
 
 Each scored attempt also shows a scoring confidence panel. It explains whether the current feedback is backed by enough transcript length, audio duration, audio quality, browser ASR confidence, and optional external scoring signals.
 

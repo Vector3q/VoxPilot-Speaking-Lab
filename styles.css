@@ -266,6 +266,63 @@ textarea {
   font-size: 24px;
 }
 
+.starter-panel h2 {
+  margin-top: 10px;
+}
+
+.starter-step-list {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.starter-step {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+}
+
+.starter-step > span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #e8f7f5;
+  color: var(--teal-dark);
+  font-weight: 800;
+}
+
+.starter-step strong,
+.starter-step small {
+  display: block;
+}
+
+.starter-step small {
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.starter-step.active {
+  border-color: rgba(29, 78, 216, 0.32);
+  background: #f8fbff;
+}
+
+.starter-step.active > span {
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.starter-step.done > span {
+  background: var(--teal);
+  color: #ffffff;
+}
+
 .practice-board {
   min-width: 0;
   padding: clamp(18px, 2.5vw, 26px);
@@ -335,6 +392,53 @@ textarea {
   margin: 12px 0 0;
   color: var(--muted);
   line-height: 1.6;
+}
+
+.starter-question {
+  font-size: clamp(24px, 3.5vw, 40px);
+}
+
+.starter-mission {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(240px, 0.9fr);
+  gap: 14px;
+  margin: 18px 0 0;
+  padding: 16px;
+  border: 1px solid rgba(15, 159, 143, 0.22);
+  border-left: 4px solid var(--teal);
+  border-radius: var(--radius);
+  background: #f8fffd;
+}
+
+.starter-mission h3 {
+  margin: 10px 0 8px;
+  font-size: 18px;
+}
+
+.starter-mission p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.starter-template {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+}
+
+.starter-template span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.starter-template strong {
+  line-height: 1.45;
 }
 
 .question-actions {
@@ -515,6 +619,98 @@ textarea {
 .feedback-board {
   margin-top: 16px;
   padding: clamp(16px, 2.2vw, 22px);
+}
+
+.starter-feedback {
+  border-left: 4px solid var(--blue);
+}
+
+.starter-result {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfdff;
+}
+
+.starter-result h2 {
+  margin-top: 10px;
+}
+
+.starter-result.pass {
+  border-color: rgba(15, 159, 143, 0.28);
+  background: #f4fffc;
+}
+
+.starter-result.almost {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: #fffbeb;
+}
+
+.starter-result.retry {
+  border-color: rgba(220, 38, 38, 0.24);
+  background: #fff7f7;
+}
+
+.starter-score {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+}
+
+.starter-score strong {
+  font-size: 36px;
+}
+
+.starter-check-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.starter-check {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+  min-height: 108px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+}
+
+.starter-check > span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #eef2f7;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.starter-check.passed > span {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.starter-check strong {
+  display: block;
+}
+
+.starter-check p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .empty-feedback {
@@ -1415,6 +1611,7 @@ textarea {
   .workspace,
   .control-band,
   .feedback-grid,
+  .starter-mission,
   .full-setup,
   .ladder-hero,
   .ladder-grid,
@@ -1434,6 +1631,10 @@ textarea {
   .summary-grid {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
   }
+
+  .starter-check-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1450,6 +1651,7 @@ textarea {
   }
 
   .practice-header,
+  .starter-result,
   .history-top,
   .bank-item,
   .history-item,

@@ -1,7 +1,7 @@
 const SpeechRecognitionApi = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 const state = {
-  tab: "practice",
+  tab: "starter",
   mode: "repeat",
   currentRepeat: QUESTION_BANK.repeat[0],
   currentInterview: QUESTION_BANK.interview[0],
@@ -31,6 +31,7 @@ const state = {
   setup: loadSetupConfig(),
   ladder: loadLadderProfile(),
   coach: getDefaultCoachState(),
+  starter: getDefaultStarterState(),
   bankType: "all",
   bankDifficulty: "all",
   toast: "",
@@ -94,6 +95,7 @@ function renderTopbar() {
 
 function renderNav() {
   const tabs = [
+    ["starter", "起步训练"],
     ["ladder", "Ladder"],
     ["practice", "练习台"],
     ["full", "完整练习"],
@@ -117,6 +119,7 @@ function renderNav() {
 }
 
 function renderActiveTab() {
+  if (state.tab === "starter") return renderStarterView();
   if (state.tab === "ladder") return renderLadderView();
   if (state.tab === "full") return renderFullRunView();
   if (state.tab === "bank") return renderBankView();
@@ -141,6 +144,157 @@ function renderPracticeView() {
         ${renderPracticeCard(false)}
         ${renderFeedback()}
       </div>
+    </section>
+  `;
+}
+
+function renderStarterView() {
+  const starter = state.starter;
+  const question = getStarterQuestion();
+  const steps = getStarterSteps(question);
+  const step = steps[starter.step - 1] || steps[0];
+  const completedToday = getTodayStarterCompletions();
+  const isRepeat = question.type === "repeat";
+  return `
+    <section class="workspace starter-workspace">
+      <aside class="panel starter-panel">
+        <span class="badge blue">Start Easy</span>
+        <h2>起步训练</h2>
+        <p class="compact-copy">先不追求高分，把一道题拆成 4 个小台阶。Step 1-3 只看本步目标，Step 4 再回到完整题。</p>
+        <div class="segmented" role="group" aria-label="Starter mode">
+          <button class="${starter.mode === "interview" ? "active" : ""}" data-starter-mode="interview">Interview 起步</button>
+          <button class="${starter.mode === "repeat" ? "active" : ""}" data-starter-mode="repeat">Repeat 起步</button>
+        </div>
+        <div class="starter-step-list">
+          ${steps.map((item, index) => `
+            <div class="starter-step ${starter.step === index + 1 ? "active" : ""} ${starter.step > index + 1 ? "done" : ""}">
+              <span>${index + 1}</span>
+              <div>
+                <strong>${escapeHtml(item.title)}</strong>
+                <small>${escapeHtml(item.microGoal)}</small>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+        <div class="mini-stats">
+          <div class="mini-stat">
+            <span>今日完成</span>
+            <strong>${completedToday}</strong>
+          </div>
+          <div class="mini-stat">
+            <span>当前台阶</span>
+            <strong>${starter.step}/4</strong>
+          </div>
+        </div>
+      </aside>
+      <div>
+        <section class="practice-board starter-board">
+          <div class="practice-header">
+            <div>
+              <div class="badge-row">
+                <span class="badge">Start Easy</span>
+                <span class="badge ${isRepeat ? "violet" : "blue"}">${isRepeat ? "Listen & Repeat" : "Take an Interview"}</span>
+                <span class="badge orange">Step ${starter.step}/4</span>
+                <span class="badge blue">${escapeHtml(question.category)}</span>
+              </div>
+              <h2 class="question-text starter-question">${escapeHtml(step.displayText)}</h2>
+              <p class="prompt-note">${escapeHtml(step.promptNote)}</p>
+            </div>
+            <div class="question-actions">
+              ${isRepeat && starter.step === 4 ? `<button class="ghost-button" data-starter-show-sentence="true"><span class="button-icon">Aa</span>${state.showSentence ? "隐藏原句" : "显示原句"}</button>` : ""}
+              <button class="ghost-button" data-play-prompt="true"><span class="button-icon">▶</span>${isRepeat ? "播放句子" : "朗读题目"}</button>
+              <button class="ghost-button" data-starter-new-question="true"><span class="button-icon">↻</span>换一题</button>
+            </div>
+          </div>
+
+          <div class="starter-mission">
+            <div>
+              <span class="badge">本步目标</span>
+              <h3>${escapeHtml(step.title)}</h3>
+              <p>${escapeHtml(step.mission)}</p>
+            </div>
+            <div class="starter-template">
+              <span>提示骨架</span>
+              <strong>${escapeHtml(step.template)}</strong>
+            </div>
+          </div>
+
+          <div class="control-band">
+            <div class="record-control">
+              <button class="record-button ${state.isRecording && state.recordingTarget === "starter" ? "recording" : ""}" data-starter-record-toggle="true" aria-label="${state.isRecording ? "停止录音" : "开始录音"}">
+                <span class="record-dot"></span>
+              </button>
+              <span class="timer" id="timer">${formatTime(state.elapsed)}</span>
+            </div>
+            <div>
+              <div class="control-actions">
+                <button class="primary-button" data-starter-record-toggle="true">
+                  <span class="button-icon">${state.isRecording && state.recordingTarget === "starter" ? "■" : "●"}</span>
+                  ${state.isRecording && state.recordingTarget === "starter" ? "停止录音" : "开始录音"}
+                </button>
+                <button class="tool-button" data-analyze-starter="true"><span class="button-icon">✓</span>分析这一步</button>
+                <button class="tool-button" data-clear-starter="true"><span class="button-icon">×</span>清空本步</button>
+                ${starter.feedback && starter.step < 4 ? `<button class="tool-button" data-starter-next-step="true"><span class="button-icon">→</span>下一步</button>` : ""}
+                ${starter.feedback && starter.step === 4 ? `<button class="tool-button" data-starter-to-practice="true"><span class="button-icon">→</span>去练习台完整练</button>` : ""}
+              </div>
+              <div class="status-line">
+                <span class="status-dot ${state.isRecording && state.recordingTarget === "starter" ? "recording" : starter.feedback ? "done" : "ready"}"></span>
+                <span>${escapeHtml(state.status)}</span>
+              </div>
+              ${state.audioUrl ? `<audio class="audio-player" controls src="${state.audioUrl}"></audio>` : ""}
+            </div>
+          </div>
+
+          <div class="transcript-area">
+            <label for="starterTranscriptInput">你的回答</label>
+            <textarea id="starterTranscriptInput" placeholder="${SpeechRecognitionApi ? "录音时会自动生成，也可以手动修改。" : "当前浏览器不支持自动识别，请手动输入你刚才说的内容。"}">${escapeHtml(state.transcript)}</textarea>
+          </div>
+        </section>
+        ${renderStarterFeedback()}
+      </div>
+    </section>
+  `;
+}
+
+function renderStarterFeedback() {
+  const feedback = state.starter.feedback;
+  if (!feedback) {
+    return `
+      <section class="feedback-board starter-feedback">
+        <div class="empty-feedback">完成本步录音或输入后，系统只检查当前小目标，不会调用 AI。</div>
+      </section>
+    `;
+  }
+  const resultClass = feedback.result === "pass" ? "pass" : feedback.result === "almost" ? "almost" : "retry";
+  return `
+    <section class="feedback-board starter-feedback">
+      <div class="starter-result ${resultClass}">
+        <div>
+          <span class="badge">${escapeHtml(feedback.label)}</span>
+          <h2>${escapeHtml(feedback.summary)}</h2>
+          <p class="compact-copy">${escapeHtml(feedback.nextAction)}</p>
+        </div>
+        ${feedback.score ? `<div class="starter-score"><strong>${feedback.score}</strong><span>/ 6</span></div>` : ""}
+      </div>
+      <div class="starter-check-grid">
+        ${feedback.checks.map((item) => `
+          <div class="starter-check ${item.passed ? "passed" : ""}">
+            <span>${item.passed ? "✓" : "•"}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail)}</p>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+      ${feedback.fullFeedback ? `
+        <section class="feedback-section wide-section">
+          <h3>完整题本地评分</h3>
+          <p class="compact-copy">${escapeHtml(feedback.fullFeedback.summary)}</p>
+          ${feedback.fullFeedback.confidence ? renderScoringConfidence(feedback.fullFeedback.confidence) : ""}
+          ${feedback.fullFeedback.detailScores ? renderScoreBreakdown(feedback.fullFeedback.detailScores) : ""}
+        </section>
+      ` : ""}
     </section>
   `;
 }
@@ -1058,14 +1212,14 @@ function renderHistoryView() {
                         <p class="item-title">${escapeHtml(item.prompt)}</p>
                         <p class="compact-copy">${escapeHtml(item.summary)}</p>
                         <div class="item-meta">
-                          <span class="badge">${item.type === "repeat" ? "Repeat" : "Interview"}</span>
+                          <span class="badge">${item.trainingMode === "starter" ? "Start Easy" : item.type === "repeat" ? "Repeat" : "Interview"}</span>
                           <span class="badge blue">${formatDate(item.createdAt)}</span>
-                          <span class="badge orange">Score ${item.score}/6</span>
+                          <span class="badge orange">${item.trainingMode === "starter" ? `Step ${item.starterStep} ${item.starterResult || ""}` : `Score ${item.score}/6`}</span>
                         </div>
                       </div>
                       <div class="history-actions">
                         <button class="small-button" data-review-history="${item.id}">查看</button>
-                        <button class="small-button" data-start-coach-history="${item.id}">Coach 复盘</button>
+                        ${item.trainingMode === "starter" ? "" : `<button class="small-button" data-start-coach-history="${item.id}">Coach 复盘</button>`}
                       </div>
                     </article>
                   `
@@ -1635,6 +1789,13 @@ function bindEvents() {
     });
   }
 
+  const starterTranscriptInput = document.querySelector("#starterTranscriptInput");
+  if (starterTranscriptInput) {
+    starterTranscriptInput.addEventListener("input", (event) => {
+      state.transcript = event.target.value;
+    });
+  }
+
   const coachTranscriptInput = document.querySelector("#coachTranscriptInput");
   if (coachTranscriptInput) {
     coachTranscriptInput.addEventListener("input", (event) => {
@@ -1665,6 +1826,25 @@ function bindEvents() {
   bindClick("[data-play-prompt]", () => speakPrompt());
   bindClick("[data-next-question]", () => nextQuestion());
   bindClick("[data-analyze]", () => analyzeCurrent());
+  bindClick("[data-starter-show-sentence]", () => {
+    state.showSentence = !state.showSentence;
+    render();
+  });
+  bindClick("[data-starter-new-question]", () => resetStarterQuestion());
+  bindClick("[data-starter-next-step]", () => nextStarterStep());
+  bindClick("[data-starter-to-practice]", () => practiceQuestion(getStarterQuestion().id));
+  bindClick("[data-analyze-starter]", () => analyzeStarterStep());
+  bindClick("[data-clear-starter]", () => {
+    clearStarterAttemptWork(false);
+    render();
+  });
+  bindClick("[data-starter-record-toggle]", () => {
+    if (state.isRecording && state.recordingTarget === "starter") stopRecording();
+    else {
+      state.recordingTarget = "starter";
+      startRecording();
+    }
+  });
   bindClick("[data-clear-current]", () => {
     clearCurrentWork(false);
     render();
@@ -1693,6 +1873,10 @@ function bindEvents() {
 
   document.querySelectorAll("[data-practice-question]").forEach((button) => {
     button.addEventListener("click", () => practiceQuestion(button.dataset.practiceQuestion));
+  });
+
+  document.querySelectorAll("[data-starter-mode]").forEach((button) => {
+    button.addEventListener("click", () => setStarterMode(button.dataset.starterMode));
   });
 
   document.querySelectorAll("[data-ladder-plan-index]").forEach((button) => {
@@ -2153,10 +2337,449 @@ async function callConfiguredAiJson(config, systemPrompt, userPrompt) {
   return parseJsonLike(extractAiText(data));
 }
 
+function getDefaultStarterState(mode = "interview") {
+  const question = pickStarterQuestion(mode);
+  return {
+    mode,
+    questionId: question.id,
+    step: 1,
+    feedback: null,
+    attempts: [],
+    lastSavedSignature: ""
+  };
+}
+
+function pickStarterQuestion(mode, excludeId = "") {
+  const pool = (mode === "repeat" ? QUESTION_BANK.repeat : QUESTION_BANK.interview)
+    .filter((item) => item.difficulty !== "Hard");
+  const filtered = pool.filter((item) => item.id !== excludeId);
+  return randomItem(filtered.length ? filtered : pool);
+}
+
+function getStarterQuestion() {
+  const starter = state.starter || getDefaultStarterState();
+  const pool = starter.mode === "repeat" ? QUESTION_BANK.repeat : QUESTION_BANK.interview;
+  let question = pool.find((item) => item.id === starter.questionId);
+  if (!question) {
+    question = pickStarterQuestion(starter.mode);
+    state.starter.questionId = question.id;
+  }
+  return question;
+}
+
+function getStarterSteps(question) {
+  if (question.type === "repeat") {
+    const chunks = splitStarterChunks(question.text);
+    const keywords = getStarterKeywords(question).join(" / ");
+    const repeatText = state.showSentence ? question.text : "播放句子后整句复述。需要时可以先显示原句。";
+    return [
+      {
+        title: "关键词热身",
+        microGoal: "只抓核心词",
+        displayText: keywords,
+        promptNote: "不用完整复述，先把内容词说清楚。",
+        mission: "读出或复述核心关键词，先让耳朵抓住句子的骨架。",
+        template: keywords
+      },
+      {
+        title: "分块跟读",
+        microGoal: "按意群说",
+        displayText: chunks.join(" / "),
+        promptNote: "每个斜线是一小块，一块一口气说完。",
+        mission: "按分块顺序跟读，先稳住关键词，再连接成短语。",
+        template: chunks.join(" / ")
+      },
+      {
+        title: "看关键词复述",
+        microGoal: "用关键词还原句子",
+        displayText: keywords,
+        promptNote: "现在只看关键词，尽量把句子补完整。",
+        mission: "不看完整原句，只用关键词复述出主要意思。",
+        template: keywords
+      },
+      {
+        title: "完整复述",
+        microGoal: "回到原题",
+        displayText: repeatText,
+        promptNote: "这一轮使用完整本地评分，但仍然不会调用 AI。",
+        mission: "播放后整句复述，尽量保留关键词、顺序和句尾。",
+        template: "Listen -> pause -> repeat the whole sentence"
+      }
+    ];
+  }
+
+  return [
+    {
+      title: "只说立场",
+      microGoal: "一句话开口",
+      displayText: question.text,
+      promptNote: "这一步只要说清楚你的选择或观点。",
+      mission: "用一句完整英文直接回答题目，不需要理由。",
+      template: "I prefer ___. / I think ___."
+    },
+    {
+      title: "加 because",
+      microGoal: "观点 + 理由",
+      displayText: question.text,
+      promptNote: "这一步只检查有没有清楚理由。",
+      mission: "把观点和一个 because 理由连起来。",
+      template: "I prefer ___ because ___."
+    },
+    {
+      title: "加具体例子",
+      microGoal: "补一个场景",
+      displayText: question.text,
+      promptNote: "这一步只练例子，不追求完整高分答案。",
+      mission: "加入一个具体时间、场景或经历，让理由不再泛。",
+      template: "For example, last semester I ___."
+    },
+    {
+      title: "完整回答",
+      microGoal: "回到原题",
+      displayText: question.text,
+      promptNote: "这一轮使用完整本地评分，但仍然不会调用 AI。",
+      mission: "说出观点、理由、例子和结果，完成一题基础答案。",
+      template: "I prefer ___ because ___. For example, ___. This helped me ___."
+    }
+  ];
+}
+
+function splitStarterChunks(text) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  if (words.length <= 7) return [text];
+  const middle = Math.ceil(words.length / 2);
+  return [words.slice(0, middle).join(" "), words.slice(middle).join(" ")];
+}
+
+function getStarterKeywords(question) {
+  const contentWords = getContentWords(normalizeWords(question.text))
+    .filter((word) => word.length > 2)
+    .slice(0, 6);
+  return contentWords.length ? contentWords : normalizeWords(question.text).slice(0, 5);
+}
+
+function setStarterMode(mode) {
+  if (!["repeat", "interview"].includes(mode)) return;
+  stopIfRecording();
+  state.starter = getDefaultStarterState(mode);
+  state.mode = mode;
+  clearStarterAttemptWork(false);
+  state.status = "准备开始";
+  render();
+}
+
+function resetStarterQuestion() {
+  stopIfRecording();
+  const currentId = state.starter.questionId;
+  const question = pickStarterQuestion(state.starter.mode, currentId);
+  state.starter.questionId = question.id;
+  state.starter.step = 1;
+  state.starter.attempts = [];
+  state.starter.lastSavedSignature = "";
+  state.mode = state.starter.mode;
+  state.showSentence = false;
+  clearStarterAttemptWork(false);
+  state.status = "已换一题，从 Step 1 开始";
+  render();
+}
+
+function nextStarterStep() {
+  if (!state.starter.feedback) {
+    showToast("先完成本步分析，再进入下一步。");
+    return;
+  }
+  if (state.starter.step >= 4) return;
+  state.starter.step += 1;
+  state.showSentence = false;
+  clearStarterAttemptWork(false);
+  state.status = `进入 Step ${state.starter.step}`;
+  render();
+}
+
+function clearStarterAttemptWork(keepTranscript = false) {
+  if (!keepTranscript) state.transcript = "";
+  state.feedback = null;
+  state.starter.feedback = null;
+  state.isScoring = false;
+  state.elapsed = 0;
+  state.duration = 0;
+  state.audioStats = null;
+  state.audioAnalysisPending = false;
+  state.recognitionStats = {
+    confidenceSamples: [],
+    finalSegments: 0,
+    interimSegments: 0
+  };
+  if (state.audioUrl) {
+    URL.revokeObjectURL(state.audioUrl);
+    state.audioUrl = "";
+  }
+  state.audioBlob = null;
+  if (state.coach?.active) resetCoachSession(false);
+  state.recordingTarget = "starter";
+}
+
+function analyzeStarterStep() {
+  if (state.isScoring) return;
+  const question = getStarterQuestion();
+  const transcript = cleanupSpacing(state.transcript);
+  state.transcript = transcript;
+  if (!transcript) {
+    showToast("先录音，或手动输入这一小步的回答。");
+    return;
+  }
+
+  state.isScoring = true;
+  state.status = "正在检查本步目标";
+  render();
+
+  const feedback = createStarterFeedback(question, transcript);
+  state.starter.feedback = feedback;
+  state.isScoring = false;
+  state.status = feedback.result === "pass" ? "本步完成，可以进入下一步" : "本步反馈已生成，可以再来一次";
+  state.starter.attempts.push({
+    step: state.starter.step,
+    transcript,
+    result: feedback.result,
+    createdAt: new Date().toISOString()
+  });
+  saveStarterHistoryItem(question, transcript, feedback);
+  render();
+}
+
+function createStarterFeedback(question, transcript) {
+  if (state.starter.step === 4) return createStarterFullFeedback(question, transcript);
+  return question.type === "repeat"
+    ? createStarterRepeatFeedback(question, transcript)
+    : createStarterInterviewFeedback(question, transcript);
+}
+
+function createStarterInterviewFeedback(question, transcript) {
+  const words = normalizeWords(transcript);
+  const lower = ` ${transcript.toLowerCase()} `;
+  const step = state.starter.step;
+  const direct = /\b(i think|i believe|i prefer|i would|yes|no|my favorite|the best|i agree|i disagree)\b/.test(lower.slice(0, 160));
+  const reason = /\b(because|since|the reason|one reason)\b/.test(lower);
+  const example = /\b(for example|for instance|last semester|one time|once|when i|in my class|in one course)\b/.test(lower);
+  const action = /\b(studied|prepared|joined|worked|asked|used|made|helped|learned|went|took|created|met|found|improved|finished|discussed)\b/.test(lower);
+
+  if (step === 1) {
+    return buildStarterResult({
+      passed: direct && words.length >= 4,
+      almost: direct || words.length >= 4,
+      passSummary: "你已经直接说出立场。",
+      almostSummary: "接近了，但立场还可以更直接。",
+      retrySummary: "先只说一句明确观点。",
+      nextAction: "下一遍用 I prefer / I think / I would 开头，说满一句即可。",
+      checks: [
+        { label: "直接表态", passed: direct, detail: "开头有 I prefer / I think / I would / yes / no 这类信号。" },
+        { label: "完整短句", passed: words.length >= 4, detail: "至少说出 4 个词，形成一句能听懂的话。" }
+      ]
+    });
+  }
+
+  if (step === 2) {
+    return buildStarterResult({
+      passed: direct && reason && words.length >= 8,
+      almost: (direct && reason) || reason || words.length >= 8,
+      passSummary: "你已经把观点和理由连起来。",
+      almostSummary: "接近了，还需要更完整的 because 理由句。",
+      retrySummary: "这一轮只练观点 + because。",
+      nextAction: "下一遍用 I prefer ___ because ___，理由不要只说 good / helpful。",
+      checks: [
+        { label: "有观点", passed: direct, detail: "先回答题目，再解释原因。" },
+        { label: "有 because 理由", passed: reason, detail: "出现 because / since / reason 这类理由连接。" },
+        { label: "句子够完整", passed: words.length >= 8, detail: "至少 8 个词，避免只有一个短短片段。" }
+      ]
+    });
+  }
+
+  return buildStarterResult({
+    passed: example && action && words.length >= 12,
+    almost: example || words.length >= 12,
+    passSummary: "你已经加入了一个具体例子。",
+    almostSummary: "接近了，例子还需要更像一个真实场景。",
+    retrySummary: "这一轮只练具体例子。",
+    nextAction: "下一遍加入 For example / last semester / once，并说清楚你做了什么。",
+    checks: [
+      { label: "有例子信号", passed: example, detail: "出现 for example / once / last semester / when I 等场景信号。" },
+      { label: "有具体动作", passed: action, detail: "例子里有 prepared / joined / asked / created 等动作。" },
+      { label: "例子不是碎片", passed: words.length >= 12, detail: "至少 12 个词，让例子能独立听懂。" }
+    ]
+  });
+}
+
+function createStarterRepeatFeedback(question, transcript) {
+  const words = normalizeWords(transcript);
+  const wordSet = new Set(words);
+  const keywords = getStarterKeywords(question);
+  const hitCount = countOverlap(keywords, wordSet);
+  const hitRate = keywords.length ? hitCount / keywords.length : 0;
+  const refWords = normalizeWords(question.text);
+  const lengthFit = refWords.length ? clamp01(1 - Math.abs(words.length - refWords.length) / Math.max(refWords.length, 4)) : 0;
+  const step = state.starter.step;
+
+  if (step === 1) {
+    return buildStarterResult({
+      passed: hitRate >= 0.6,
+      almost: hitRate >= 0.4,
+      passSummary: "核心关键词抓得不错。",
+      almostSummary: "已经抓到一些关键词，还可以再补几个。",
+      retrySummary: "先别急着整句复述，抓关键词。",
+      nextAction: "下一遍只盯内容词，尤其是名词、动词、时间和地点。",
+      checks: [
+        { label: "关键词命中", passed: hitRate >= 0.6, detail: `${hitCount}/${keywords.length} 个关键词被说出。` },
+        { label: "不是空白输出", passed: words.length >= 2, detail: "至少说出两个有效词。" }
+      ]
+    });
+  }
+
+  if (step === 2) {
+    return buildStarterResult({
+      passed: hitRate >= 0.7 && words.length >= keywords.length,
+      almost: hitRate >= 0.5,
+      passSummary: "分块跟读已经能保留主要信息。",
+      almostSummary: "分块里有核心词，但还不够稳定。",
+      retrySummary: "这一轮只按意群跟读。",
+      nextAction: "下一遍一块一口气说完，不要逐词停顿。",
+      checks: [
+        { label: "关键词更完整", passed: hitRate >= 0.7, detail: `${hitCount}/${keywords.length} 个关键词被保留。` },
+        { label: "输出长度够用", passed: words.length >= keywords.length, detail: "说出的词数至少覆盖关键词数量。" }
+      ]
+    });
+  }
+
+  return buildStarterResult({
+    passed: hitRate >= 0.75 && lengthFit >= 0.45,
+    almost: hitRate >= 0.55,
+    passSummary: "你已经能用关键词还原主要意思。",
+    almostSummary: "关键词有了，句子还需要更完整。",
+    retrySummary: "这一轮只看关键词复述。",
+    nextAction: "下一遍先说主语和动词，再把剩余关键词接上。",
+    checks: [
+      { label: "关键词稳定", passed: hitRate >= 0.75, detail: `${hitCount}/${keywords.length} 个关键词被保留。` },
+      { label: "长度接近原句", passed: lengthFit >= 0.45, detail: "回答长度不能只剩关键词列表。" }
+    ]
+  });
+}
+
+function createStarterFullFeedback(question, transcript) {
+  const context = getScoringContext();
+  const duration = state.duration || state.elapsed;
+  const fullFeedback = question.type === "repeat"
+    ? createRepeatFeedback(question, transcript, duration, context)
+    : createInterviewFeedback(question, transcript, duration, context);
+  fullFeedback.confidence = buildScoringConfidence(question, fullFeedback, transcript, duration, context);
+  const passed = fullFeedback.score >= 3.2;
+  const almost = fullFeedback.score >= 2.6;
+  return buildStarterResult({
+    passed,
+    almost,
+    passSummary: "你完成了一道完整题。",
+    almostSummary: "你已经能完成完整题，还需要补稳结构。",
+    retrySummary: "这次还没完成完整题的基本要求。",
+    nextAction: passed
+      ? "下一步可以去练习台做类似题，或继续下一道起步训练。"
+      : "先回到前面的台阶，把观点、理由、例子或关键词补稳。",
+    score: fullFeedback.score,
+    fullFeedback,
+    checks: [
+      { label: "完成完整题", passed: fullFeedback.score >= 2.6, detail: "已经使用完整本地评分检查整题表现。" },
+      { label: "达到起步通过线", passed, detail: "Start Easy 通过线是 3.2/6，不等同高分线。" },
+      { label: "AI 未强制介入", passed: true, detail: "本模式 Step 4 只使用本地完整评分，不调用 AI 或外部发音 API。" }
+    ]
+  });
+}
+
+function buildStarterResult({ passed, almost, passSummary, almostSummary, retrySummary, nextAction, checks, score = null, fullFeedback = null }) {
+  const result = passed ? "pass" : almost ? "almost" : "try-again";
+  const label = passed ? "Pass" : almost ? "Almost" : "Try Again";
+  const summary = passed ? passSummary : almost ? almostSummary : retrySummary;
+  return {
+    result,
+    label,
+    summary,
+    nextAction,
+    checks,
+    score,
+    fullFeedback
+  };
+}
+
+function saveStarterHistoryItem(question, transcript, feedback) {
+  const signature = `starter|${question.id}|${state.starter.step}|${transcript}|${feedback.result}|${feedback.score || ""}`;
+  if (state.starter.lastSavedSignature === signature) return;
+  saveHistoryItem({
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    createdAt: new Date().toISOString(),
+    trainingMode: "starter",
+    starterStep: state.starter.step,
+    starterResult: feedback.result,
+    starterFeedback: {
+      result: feedback.result,
+      label: feedback.label,
+      summary: feedback.summary,
+      nextAction: feedback.nextAction,
+      checks: feedback.checks,
+      score: feedback.score
+    },
+    type: question.type,
+    questionId: question.id,
+    prompt: question.text,
+    transcript,
+    score: feedback.score,
+    duration: state.duration || state.elapsed,
+    summary: `Start Easy Step ${state.starter.step}: ${feedback.summary}`,
+    issues: feedback.result === "pass" ? [] : [feedback.nextAction],
+    strengths: feedback.result === "pass" ? [feedback.summary] : [],
+    detailScores: feedback.fullFeedback?.detailScores || [],
+    pronunciation: feedback.fullFeedback?.pronunciation || null,
+    rubricProfile: feedback.fullFeedback?.rubricProfile || null,
+    confidence: feedback.fullFeedback?.confidence || null
+  });
+  state.starter.lastSavedSignature = signature;
+}
+
+function getTodayStarterCompletions() {
+  return loadHistory().filter((item) =>
+    item.trainingMode === "starter" &&
+    item.starterStep === 4 &&
+    item.starterResult === "pass" &&
+    isToday(item.createdAt)
+  ).length;
+}
+
+function reviewStarterHistory(item) {
+  stopIfRecording();
+  const mode = item.type === "repeat" ? "repeat" : "interview";
+  state.starter = {
+    ...getDefaultStarterState(mode),
+    mode,
+    questionId: item.questionId,
+    step: item.starterStep || 1,
+    feedback: item.starterFeedback || null,
+    attempts: [],
+    lastSavedSignature: ""
+  };
+  state.mode = mode;
+  state.tab = "starter";
+  state.transcript = item.transcript || "";
+  state.duration = item.duration || 0;
+  state.elapsed = item.duration || 0;
+  state.audioStats = null;
+  state.audioBlob = null;
+  state.audioUrl = "";
+  state.feedback = null;
+  state.recordingTarget = "starter";
+  state.status = "已载入 Start Easy 历史记录";
+  render();
+}
+
 async function startRecording() {
   if (state.isRecording) return;
-  const target = state.recordingTarget === "coach" ? "coach" : "main";
+  const target = state.recordingTarget === "coach" ? "coach" : state.recordingTarget === "starter" ? "starter" : "main";
   if (target === "coach") clearCoachRetakeWork();
+  else if (target === "starter") clearStarterAttemptWork(false);
   else {
     state.recordingTarget = "main";
     clearCurrentWork(false);
@@ -2197,6 +2820,10 @@ async function startRecording() {
           analyzeCurrent();
           return;
         }
+        if (target === "starter" && state.transcript.trim() && !state.starter.feedback) {
+          analyzeStarterStep();
+          return;
+        }
         render();
       });
       state.mediaRecorder.start();
@@ -2211,7 +2838,7 @@ async function startRecording() {
 function stopRecording() {
   if (!state.isRecording) return;
 
-  const target = state.recordingTarget === "coach" ? "coach" : "main";
+  const target = state.recordingTarget === "coach" ? "coach" : state.recordingTarget === "starter" ? "starter" : "main";
   state.isRecording = false;
   state.duration = state.elapsed;
   if (target === "coach") state.coach.retake.duration = state.elapsed;
@@ -2243,12 +2870,17 @@ function stopRecording() {
       if (!state.feedback && !state.audioAnalysisPending) analyzeCurrent();
     }, 900);
   }
+  if (target === "starter" && state.transcript.trim()) {
+    window.setTimeout(() => {
+      if (!state.starter.feedback && !state.audioAnalysisPending) analyzeStarterStep();
+    }, 900);
+  }
 }
 
 function startRecognition() {
   if (!SpeechRecognitionApi) return;
   try {
-    const target = state.recordingTarget === "coach" ? "coach" : "main";
+    const target = state.recordingTarget === "coach" ? "coach" : state.recordingTarget === "starter" ? "starter" : "main";
     const recognition = new SpeechRecognitionApi();
     recognition.lang = "en-US";
     recognition.interimResults = true;
@@ -2276,7 +2908,7 @@ function startRecognition() {
         if (input) input.value = state.coach.retake.transcript;
       } else {
         state.transcript = transcript;
-        const input = document.querySelector("#transcriptInput");
+        const input = document.querySelector(target === "starter" ? "#starterTranscriptInput" : "#transcriptInput");
         if (input) input.value = state.transcript;
       }
     });
@@ -2451,6 +3083,7 @@ function nextFullItem() {
 }
 
 function getActiveQuestion(isFullRun) {
+  if (state.tab === "starter") return getStarterQuestion();
   if (isFullRun && state.full.sequence.length) {
     return state.full.sequence[state.full.index];
   }
@@ -2494,6 +3127,10 @@ function practiceQuestion(id) {
 function reviewHistory(id) {
   const item = loadHistory().find((entry) => entry.id === id);
   if (!item) return;
+  if (item.trainingMode === "starter") {
+    reviewStarterHistory(item);
+    return;
+  }
   resetCoachSession(false);
   const question = [...QUESTION_BANK.repeat, ...QUESTION_BANK.interview].find((entry) => entry.id === item.questionId) || {
     id: item.questionId,

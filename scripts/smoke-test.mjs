@@ -102,6 +102,7 @@ globalThis.__voxpilot = {
   COACH_PROFILE_STORAGE_KEY,
   COACH_SESSIONS_STORAGE_KEY,
   createInterviewFeedback,
+  analyzeStarterStep,
   buildScoringConfidence,
   nextQuestion,
   clearHistoryWithConfirm,
@@ -124,6 +125,12 @@ function assert(condition, message) {
 }
 
 assert(appElement.innerHTML.includes("VoxPilot Speaking Lab"), "initial render failed");
+assert(appElement.innerHTML.includes("Start Easy") || appElement.innerHTML.includes("起步训练"), "starter mode did not render");
+
+api.state.transcript = "I prefer studying with classmates.";
+api.analyzeStarterStep();
+assert(api.state.starter.feedback?.result === "pass", "starter step 1 should pass a direct answer");
+assert(context.localStorage.getItem(api.STORAGE_KEY)?.includes("starter"), "starter attempt was not saved");
 
 const question = api.state.currentInterview;
 const transcript = "I prefer studying with classmates because I can get useful feedback. For example, last semester I prepared a presentation with two classmates. As a result, our presentation became clearer.";
