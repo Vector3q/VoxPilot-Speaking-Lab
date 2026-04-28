@@ -195,6 +195,7 @@ function renderStarterView() {
                 <span class="badge">Start Easy</span>
                 <span class="badge ${isRepeat ? "violet" : "blue"}">${isRepeat ? "Listen & Repeat" : "Take an Interview"}</span>
                 <span class="badge orange">Step ${starter.step}/4</span>
+                <span class="badge">${escapeHtml(step.interactionLabel)}</span>
                 <span class="badge blue">${escapeHtml(question.category)}</span>
               </div>
               <h2 class="question-text starter-question">${escapeHtml(step.displayText)}</h2>
@@ -214,10 +215,12 @@ function renderStarterView() {
               <p>${escapeHtml(step.mission)}</p>
             </div>
             <div class="starter-template">
-              <span>提示骨架</span>
+              <span>${escapeHtml(step.templateLabel)}</span>
               <strong>${escapeHtml(step.template)}</strong>
             </div>
           </div>
+
+          ${renderStarterScaffold(step)}
 
           <div class="control-band">
             <div class="record-control">
@@ -251,6 +254,28 @@ function renderStarterView() {
           </div>
         </section>
         ${renderStarterFeedback()}
+      </div>
+    </section>
+  `;
+}
+
+function renderStarterScaffold(step) {
+  const items = step.scaffold || [];
+  if (!items.length) return "";
+  return `
+    <section class="starter-scaffold ${step.scaffoldType || ""}">
+      <div class="section-title-row">
+        <h3>${escapeHtml(step.scaffoldTitle || "本步扶手")}</h3>
+        <span class="badge">${escapeHtml(step.interactionLabel)}</span>
+      </div>
+      <div class="starter-scaffold-grid">
+        ${items.map((item, index) => `
+          <div class="starter-scaffold-item">
+            <span>${index + 1}</span>
+            <strong>${escapeHtml(item.label || item)}</strong>
+            ${item.detail ? `<small>${escapeHtml(item.detail)}</small>` : ""}
+          </div>
+        `).join("")}
       </div>
     </section>
   `;
@@ -2370,40 +2395,72 @@ function getStarterQuestion() {
 function getStarterSteps(question) {
   if (question.type === "repeat") {
     const chunks = splitStarterChunks(question.text);
-    const keywords = getStarterKeywords(question).join(" / ");
+    const keywordItems = getStarterKeywords(question).map((word) => ({
+      label: word,
+      detail: "content word"
+    }));
+    const keywords = keywordItems.map((item) => item.label).join(" / ");
     const repeatText = state.showSentence ? question.text : "播放句子后整句复述。需要时可以先显示原句。";
     return [
       {
         title: "关键词热身",
         microGoal: "只抓核心词",
+        interactionLabel: "Target Words",
         displayText: keywords,
-        promptNote: "不用完整复述，先把内容词说清楚。",
-        mission: "读出或复述核心关键词，先让耳朵抓住句子的骨架。",
-        template: keywords
+        promptNote: "这一步不要说完整句，只读出你听到的核心词。",
+        mission: "只说关键词。你不是在复述句子，而是在训练耳朵抓内容词。",
+        templateLabel: "只需要说",
+        template: keywords,
+        scaffoldTitle: "关键词靶点",
+        scaffoldType: "target-words",
+        scaffold: keywordItems
       },
       {
         title: "分块跟读",
         microGoal: "按意群说",
+        interactionLabel: "Chunk Builder",
         displayText: chunks.join(" / "),
         promptNote: "每个斜线是一小块，一块一口气说完。",
         mission: "按分块顺序跟读，先稳住关键词，再连接成短语。",
-        template: chunks.join(" / ")
+        templateLabel: "照这个顺序拼",
+        template: chunks.join(" / "),
+        scaffoldTitle: "句块拼装",
+        scaffoldType: "chunks",
+        scaffold: chunks.map((chunk) => ({ label: chunk, detail: "one breath" }))
       },
       {
         title: "看关键词复述",
         microGoal: "用关键词还原句子",
+        interactionLabel: "Keyword Recall",
         displayText: keywords,
-        promptNote: "现在只看关键词，尽量把句子补完整。",
-        mission: "不看完整原句，只用关键词复述出主要意思。",
-        template: keywords
+        promptNote: "现在完整句消失了，只用关键词把句子补回来。",
+        mission: "用关键词还原主要意思。可以改写一点，但要有主语、动词和句尾信息。",
+        templateLabel: "必须包含",
+        template: keywords,
+        scaffoldTitle: "只能看这些线索",
+        scaffoldType: "recall-cues",
+        scaffold: [
+          { label: "Start with subject + verb", detail: "不要只报关键词列表" },
+          { label: keywords, detail: "关键词尽量都放进去" },
+          { label: "Finish the ending", detail: "句尾信息不能丢" }
+        ]
       },
       {
         title: "完整复述",
         microGoal: "回到原题",
+        interactionLabel: "Full Task",
         displayText: repeatText,
         promptNote: "这一轮使用完整本地评分，但仍然不会调用 AI。",
         mission: "播放后整句复述，尽量保留关键词、顺序和句尾。",
-        template: "Listen -> pause -> repeat the whole sentence"
+        templateLabel: "考试化流程",
+        template: "Listen -> pause -> repeat the whole sentence",
+        scaffoldTitle: "完整题检查",
+        scaffoldType: "full-task",
+        scaffold: [
+          { label: "Play once", detail: "先听完整句" },
+          { label: "No keyword card", detail: "尽量不依赖提示" },
+          { label: "Full local score", detail: "回到完整评分" }
+        ]
       }
     ];
   }
@@ -2412,34 +2469,67 @@ function getStarterSteps(question) {
     {
       title: "只说立场",
       microGoal: "一句话开口",
+      interactionLabel: "Choice Only",
       displayText: question.text,
-      promptNote: "这一步只要说清楚你的选择或观点。",
-      mission: "用一句完整英文直接回答题目，不需要理由。",
-      template: "I prefer ___. / I think ___."
+      promptNote: "这一步不要解释，不要举例，只选一个方向。",
+      mission: "只说一句观点。你的任务是先敢开口，而不是说完整答案。",
+      templateLabel: "只允许这种长度",
+      template: "I prefer ___. / I think ___.",
+      scaffoldTitle: "二选一开口",
+      scaffoldType: "choice-only",
+      scaffold: getStarterChoiceScaffold(question)
     },
     {
       title: "加 because",
       microGoal: "观点 + 理由",
+      interactionLabel: "Reason Builder",
       displayText: question.text,
-      promptNote: "这一步只检查有没有清楚理由。",
-      mission: "把观点和一个 because 理由连起来。",
-      template: "I prefer ___ because ___."
+      promptNote: "这一步要把 Step 1 的观点接上一个原因。",
+      mission: "说一条完整 reason chain：观点 + because + 原因。还不要讲例子。",
+      templateLabel: "拼句骨架",
+      template: "I prefer ___ because ___.",
+      scaffoldTitle: "理由零件",
+      scaffoldType: "reason-builder",
+      scaffold: [
+        { label: "I prefer / I think", detail: "先重复你的立场" },
+        { label: "because", detail: "必须出现理由连接" },
+        { label: "it saves time / gives feedback / reduces stress", detail: "原因要比 good 更具体" }
+      ]
     },
     {
       title: "加具体例子",
       microGoal: "补一个场景",
+      interactionLabel: "Example Card",
       displayText: question.text,
-      promptNote: "这一步只练例子，不追求完整高分答案。",
-      mission: "加入一个具体时间、场景或经历，让理由不再泛。",
-      template: "For example, last semester I ___."
+      promptNote: "这一步像填一张小卡片：时间/场景 + 我做了什么。",
+      mission: "不要完整作答，只造一个具体例子。必须有场景和动作。",
+      templateLabel: "例子卡片",
+      template: "For example, last semester I ___.",
+      scaffoldTitle: "例子必须有两块",
+      scaffoldType: "example-card",
+      scaffold: [
+        { label: "When / where", detail: "last semester / in my class / once" },
+        { label: "Action", detail: "prepared / asked / worked / created" },
+        { label: "Object", detail: "presentation / project / homework / notes" }
+      ]
     },
     {
       title: "完整回答",
       microGoal: "回到原题",
+      interactionLabel: "Full Task",
       displayText: question.text,
       promptNote: "这一轮使用完整本地评分，但仍然不会调用 AI。",
       mission: "说出观点、理由、例子和结果，完成一题基础答案。",
-      template: "I prefer ___ because ___. For example, ___. This helped me ___."
+      templateLabel: "完整答案路线",
+      template: "Opinion -> because -> example -> result",
+      scaffoldTitle: "四句结构",
+      scaffoldType: "full-task",
+      scaffold: [
+        { label: "Opinion", detail: "I prefer..." },
+        { label: "Reason", detail: "because..." },
+        { label: "Example", detail: "For example..." },
+        { label: "Result", detail: "This helped me..." }
+      ]
     }
   ];
 }
@@ -2456,6 +2546,34 @@ function getStarterKeywords(question) {
     .filter((word) => word.length > 2)
     .slice(0, 6);
   return contentWords.length ? contentWords : normalizeWords(question.text).slice(0, 5);
+}
+
+function getStarterChoiceScaffold(question) {
+  const lower = question.text.toLowerCase();
+  const preferMatch = question.text.match(/prefer\s+(.+?)\s+or\s+(.+?)[?.]?$/i);
+  if (preferMatch) {
+    return [
+      { label: cleanupChoiceLabel(preferMatch[1]), detail: "Option A" },
+      { label: cleanupChoiceLabel(preferMatch[2]), detail: "Option B" }
+    ];
+  }
+  if (lower.startsWith("do you") || lower.startsWith("would you") || lower.startsWith("should ")) {
+    return [
+      { label: "Yes", detail: "agree / choose yes" },
+      { label: "No", detail: "disagree / choose no" }
+    ];
+  }
+  return [
+    { label: "I think ___", detail: "give one clear opinion" },
+    { label: "My choice is ___", detail: "name one object or action" }
+  ];
+}
+
+function cleanupChoiceLabel(value) {
+  return cleanupSpacing(String(value || "")
+    .replace(/\bdo you\b/gi, "")
+    .replace(/\bwould you\b/gi, "")
+    .replace(/\?+$/g, ""));
 }
 
 function setStarterMode(mode) {
@@ -2564,47 +2682,52 @@ function createStarterInterviewFeedback(question, transcript) {
   const action = /\b(studied|prepared|joined|worked|asked|used|made|helped|learned|went|took|created|met|found|improved|finished|discussed)\b/.test(lower);
 
   if (step === 1) {
+    const tooLong = words.length > 12 || reason || example;
     return buildStarterResult({
-      passed: direct && words.length >= 4,
+      passed: direct && words.length >= 4 && !tooLong,
       almost: direct || words.length >= 4,
       passSummary: "你已经直接说出立场。",
-      almostSummary: "接近了，但立场还可以更直接。",
+      almostSummary: tooLong ? "你说得太完整了，这一步先练短立场。" : "接近了，但立场还可以更直接。",
       retrySummary: "先只说一句明确观点。",
-      nextAction: "下一遍用 I prefer / I think / I would 开头，说满一句即可。",
+      nextAction: "下一遍只说一句，不加 because，不加例子。",
       checks: [
         { label: "直接表态", passed: direct, detail: "开头有 I prefer / I think / I would / yes / no 这类信号。" },
-        { label: "完整短句", passed: words.length >= 4, detail: "至少说出 4 个词，形成一句能听懂的话。" }
+        { label: "完整短句", passed: words.length >= 4, detail: "至少说出 4 个词，形成一句能听懂的话。" },
+        { label: "保持很短", passed: !tooLong, detail: "这一步不要解释原因或举例。" }
       ]
     });
   }
 
   if (step === 2) {
+    const hasGenericOnly = /\b(good|helpful|interesting|important)\b/.test(lower) && words.length < 12;
     return buildStarterResult({
-      passed: direct && reason && words.length >= 8,
+      passed: direct && reason && words.length >= 8 && !example && !hasGenericOnly,
       almost: (direct && reason) || reason || words.length >= 8,
       passSummary: "你已经把观点和理由连起来。",
-      almostSummary: "接近了，还需要更完整的 because 理由句。",
+      almostSummary: example ? "你已经开始举例了，但这一步先只练理由。" : "接近了，还需要更完整的 because 理由句。",
       retrySummary: "这一轮只练观点 + because。",
       nextAction: "下一遍用 I prefer ___ because ___，理由不要只说 good / helpful。",
       checks: [
         { label: "有观点", passed: direct, detail: "先回答题目，再解释原因。" },
         { label: "有 because 理由", passed: reason, detail: "出现 because / since / reason 这类理由连接。" },
-        { label: "句子够完整", passed: words.length >= 8, detail: "至少 8 个词，避免只有一个短短片段。" }
+        { label: "原因不太泛", passed: !hasGenericOnly, detail: "不要只停在 good / helpful / interesting。" },
+        { label: "还不举例", passed: !example, detail: "Step 2 不需要 for example。" }
       ]
     });
   }
 
   return buildStarterResult({
-    passed: example && action && words.length >= 12,
+    passed: example && action && words.length >= 12 && !reason,
     almost: example || words.length >= 12,
     passSummary: "你已经加入了一个具体例子。",
-    almostSummary: "接近了，例子还需要更像一个真实场景。",
+    almostSummary: reason ? "你还在解释理由，这一步要像写一张例子卡。" : "接近了，例子还需要更像一个真实场景。",
     retrySummary: "这一轮只练具体例子。",
     nextAction: "下一遍加入 For example / last semester / once，并说清楚你做了什么。",
     checks: [
       { label: "有例子信号", passed: example, detail: "出现 for example / once / last semester / when I 等场景信号。" },
       { label: "有具体动作", passed: action, detail: "例子里有 prepared / joined / asked / created 等动作。" },
-      { label: "例子不是碎片", passed: words.length >= 12, detail: "至少 12 个词，让例子能独立听懂。" }
+      { label: "例子不是碎片", passed: words.length >= 12, detail: "至少 12 个词，让例子能独立听懂。" },
+      { label: "只做例子卡", passed: !reason, detail: "这一步不需要再解释 because。" }
     ]
   });
 }
@@ -2621,22 +2744,23 @@ function createStarterRepeatFeedback(question, transcript) {
 
   if (step === 1) {
     return buildStarterResult({
-      passed: hitRate >= 0.6,
+      passed: hitRate >= 0.6 && words.length <= keywords.length + 2,
       almost: hitRate >= 0.4,
       passSummary: "核心关键词抓得不错。",
-      almostSummary: "已经抓到一些关键词，还可以再补几个。",
+      almostSummary: words.length > keywords.length + 2 ? "你说得太像完整句了，这一步只报关键词。" : "已经抓到一些关键词，还可以再补几个。",
       retrySummary: "先别急着整句复述，抓关键词。",
       nextAction: "下一遍只盯内容词，尤其是名词、动词、时间和地点。",
       checks: [
         { label: "关键词命中", passed: hitRate >= 0.6, detail: `${hitCount}/${keywords.length} 个关键词被说出。` },
-        { label: "不是空白输出", passed: words.length >= 2, detail: "至少说出两个有效词。" }
+        { label: "不是空白输出", passed: words.length >= 2, detail: "至少说出两个有效词。" },
+        { label: "只说关键词", passed: words.length <= keywords.length + 2, detail: "Step 1 不需要完整句。" }
       ]
     });
   }
 
   if (step === 2) {
     return buildStarterResult({
-      passed: hitRate >= 0.7 && words.length >= keywords.length,
+      passed: hitRate >= 0.7 && words.length >= keywords.length && lengthFit < 0.95,
       almost: hitRate >= 0.5,
       passSummary: "分块跟读已经能保留主要信息。",
       almostSummary: "分块里有核心词，但还不够稳定。",
@@ -2644,7 +2768,8 @@ function createStarterRepeatFeedback(question, transcript) {
       nextAction: "下一遍一块一口气说完，不要逐词停顿。",
       checks: [
         { label: "关键词更完整", passed: hitRate >= 0.7, detail: `${hitCount}/${keywords.length} 个关键词被保留。` },
-        { label: "输出长度够用", passed: words.length >= keywords.length, detail: "说出的词数至少覆盖关键词数量。" }
+        { label: "输出长度够用", passed: words.length >= keywords.length, detail: "说出的词数至少覆盖关键词数量。" },
+        { label: "还不是完整复述", passed: lengthFit < 0.95, detail: "Step 2 先练分块，不急着整句考试化。" }
       ]
     });
   }

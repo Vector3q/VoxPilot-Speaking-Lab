@@ -441,6 +441,69 @@ textarea {
   line-height: 1.45;
 }
 
+.starter-scaffold {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.starter-scaffold-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.starter-scaffold-item {
+  display: grid;
+  gap: 7px;
+  min-height: 104px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fbfdff;
+}
+
+.starter-scaffold-item > span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #e8eefc;
+  color: #1d4ed8;
+  font-weight: 800;
+}
+
+.starter-scaffold-item strong {
+  line-height: 1.35;
+}
+
+.starter-scaffold-item small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.starter-scaffold.choice-only .starter-scaffold-grid,
+.starter-scaffold.target-words .starter-scaffold-grid {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.starter-scaffold.choice-only .starter-scaffold-item,
+.starter-scaffold.target-words .starter-scaffold-item {
+  min-height: 84px;
+}
+
+.starter-scaffold.example-card {
+  border-left: 4px solid var(--orange);
+}
+
+.starter-scaffold.full-task {
+  border-left: 4px solid var(--blue);
+}
+
 .question-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1633,6 +1696,10 @@ textarea {
   }
 
   .starter-check-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .starter-scaffold-grid {
     grid-template-columns: 1fr;
   }
 }
