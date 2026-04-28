@@ -2,6 +2,8 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
+**Live Demo:** [https://vox-pilot-speaking-lab.vercel.app/](https://vox-pilot-speaking-lab.vercel.app/)
+
 VoxPilot Speaking Lab is a no-login, no-database, ready-to-run local speaking practice app. It is designed for TOEFL-style speaking practice, including repetition drills, interview-style responses, simulated scoring, pronunciation diagnostics, retry comparison, and optional AI/API-enhanced feedback.
 
 > Note: This project is not affiliated with ETS and does not include leaked exam questions. The question bank contains original simulation items based on publicly available test-format information.

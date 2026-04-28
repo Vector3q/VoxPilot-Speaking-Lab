@@ -2,6 +2,8 @@
 
 [English](README.md) | **简体中文**
 
+**在线体验：** [https://vox-pilot-speaking-lab.vercel.app/](https://vox-pilot-speaking-lab.vercel.app/)
+
 VoxPilot Speaking Lab 是一个无需登录、无需数据库、开箱即可用的本地口语练习网站。它面向 TOEFL-style 口语训练，支持复述练习、面试问答、模拟评分、发音诊断、复练对比和可选 AI/API 增强。
 
 > 说明：本项目不是 ETS 官方产品，也不包含泄露考场题。题库为基于公开题型说明创作的仿真练习题。
