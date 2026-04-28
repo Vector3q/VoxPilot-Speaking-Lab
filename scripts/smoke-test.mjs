@@ -107,7 +107,9 @@ globalThis.__voxpilot = {
   nextQuestion,
   clearHistoryWithConfirm,
   loadCoachSessions,
-  buildLocalDataSnapshot
+  buildLocalDataSnapshot,
+  buildPronunciationNotebook,
+  buildWordPronunciationNotebook
 };
 `;
 
@@ -166,5 +168,39 @@ api.state.setup.ai.apiKey = "secret-key";
 const snapshot = api.buildLocalDataSnapshot();
 assert(snapshot.setup.ai.hasApiKey === true, "export should preserve key presence");
 assert(!JSON.stringify(snapshot).includes("secret-key"), "export leaked an API key");
+
+context.localStorage.setItem(api.STORAGE_KEY, JSON.stringify([
+  {
+    id: "pron-1",
+    type: "repeat",
+    questionId: "lr-01",
+    prompt: "The library will extend its hours during final exam week.",
+    transcript: "library hours final exam week",
+    createdAt: new Date().toISOString(),
+    alignment: [
+      { type: "match", ref: "the", hyp: "the" },
+      { type: "substitute", ref: "library", hyp: "liberty" },
+      { type: "missing", ref: "extend", hyp: "" },
+      { type: "match", ref: "hours", hyp: "hours" }
+    ],
+    pronunciation: {
+      external: {
+        provider: "Test",
+        words: [
+          { word: "environment", score: 62, errorType: "Mispronunciation" }
+        ]
+      },
+      phonemeFocus: [
+        { sound: "/r/ vs /l/", label: "right / library", tip: "Practice r and l.", words: ["library", "clearly"] }
+      ]
+    }
+  }
+]));
+const notebook = api.buildPronunciationNotebook();
+assert(notebook.length === 1, "pronunciation notebook did not aggregate history");
+assert(notebook[0].words.some((item) => item.word === "library"), "pronunciation notebook missed focus words");
+const wordNotebook = api.buildWordPronunciationNotebook();
+assert(wordNotebook.some((item) => item.word === "library" && item.heardAs.some((heard) => heard.word === "liberty")), "word notebook missed repeat substitutions");
+assert(wordNotebook.some((item) => item.word === "environment" && item.hasExternal), "word notebook missed external word scores");
 
 console.log("VoxPilot smoke test passed");

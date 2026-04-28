@@ -21,6 +21,7 @@ VoxPilot Speaking Lab is a no-login, no-database, ready-to-run local speaking pr
 - Suspected pronunciation focus points in Basic mode, plus optional external phoneme-level scoring
 - Same-question retry comparison
 - Local history and weakness tracking
+- Pronunciation mistake book that aggregates recurring sound-level focus points
 - Local data management with redacted full export
 - Adaptive Ladder training with diagnostic placement, daily tasks, and step progression
 - Coach Capsule for diagnosis, micro-drill, retake, and before/after reflection

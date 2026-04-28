@@ -34,6 +34,7 @@ const state = {
   starter: getDefaultStarterState(),
   bankType: "all",
   bankDifficulty: "all",
+  mistakeBookMode: "sounds",
   toast: "",
   full: {
     active: false,
@@ -100,6 +101,7 @@ function renderNav() {
     ["practice", "练习台"],
     ["full", "完整练习"],
     ["bank", "题库"],
+    ["mistakes", "错题本"],
     ["history", "历史"],
     ["setup", "Setup"]
   ];
@@ -123,6 +125,7 @@ function renderActiveTab() {
   if (state.tab === "ladder") return renderLadderView();
   if (state.tab === "full") return renderFullRunView();
   if (state.tab === "bank") return renderBankView();
+  if (state.tab === "mistakes") return renderMistakeBookView();
   if (state.tab === "history") return renderHistoryView();
   if (state.tab === "setup") return renderSetupView();
   return renderPracticeView();
@@ -1257,6 +1260,553 @@ function renderHistoryView() {
   `;
 }
 
+function renderMistakeBookView() {
+  const history = loadHistory();
+  const soundNotebook = buildPronunciationNotebook(history);
+  const wordNotebook = buildWordPronunciationNotebook(history);
+  const activeMode = state.mistakeBookMode === "words" ? "words" : "sounds";
+  const isWordMode = activeMode === "words";
+  const activeNotebook = isWordMode ? wordNotebook : soundNotebook;
+  const totalWords = soundNotebook.reduce((sum, item) => sum + item.words.length, 0);
+  const totalWordHits = wordNotebook.reduce((sum, item) => sum + item.count, 0);
+  const activeSourceCount = countNotebookSources(activeNotebook);
+  return `
+    <section class="mistake-book">
+      <div class="history-top">
+        <div>
+          <h2>发音错题本</h2>
+          <p class="compact-copy">根据本地历史里的发音诊断、Repeat 词对齐和外部逐词结果自动整理。这里只记录当前浏览器的数据，不会上传。</p>
+        </div>
+        <div class="control-actions">
+          <button class="ghost-button" data-tab="history"><span class="button-icon">↗</span>查看来源历史</button>
+          <button class="ghost-button" data-export-local-data="true"><span class="button-icon">⇩</span>导出本地数据</button>
+        </div>
+      </div>
+
+      <div class="segmented mistake-mode-toggle" role="group" aria-label="Mistake book mode">
+        <button class="${activeMode === "sounds" ? "active" : ""}" data-mistake-book-mode="sounds">音素错题</button>
+        <button class="${activeMode === "words" ? "active" : ""}" data-mistake-book-mode="words">单词错题</button>
+      </div>
+
+      <section class="feedback-section wide-section notebook-summary">
+        <div class="summary-grid">
+          <div class="summary-tile"><span>高频音素</span><strong>${soundNotebook.length}</strong></div>
+          <div class="summary-tile"><span>单词错题</span><strong>${wordNotebook.length}</strong></div>
+          <div class="summary-tile"><span>${isWordMode ? "错词次数" : "关联单词"}</span><strong>${isWordMode ? totalWordHits : totalWords}</strong></div>
+          <div class="summary-tile"><span>来源记录</span><strong>${activeSourceCount}</strong></div>
+        </div>
+        <p class="compact-copy">${isWordMode
+          ? "单词错题优先来自 Repeat 里的漏词/替换词，以及外部发音 API 的低分单词；音素弱项里的关联词会作为辅助线索。"
+          : "音素错题展示系统推断的疑似训练点；如果你接了 Azure 或自定义发音 API，外部返回的 phoneme score 也会被放进这里。"}</p>
+      </section>
+
+      ${
+        activeNotebook.length
+          ? `<div class="mistake-grid">
+              ${isWordMode
+                ? wordNotebook.map((item) => renderWordPronunciationNotebookCard(item)).join("")
+                : soundNotebook.map((item) => renderPronunciationNotebookCard(item)).join("")}
+            </div>`
+          : `<div class="empty-feedback">${isWordMode
+            ? "还没有可整理的单词错题。先做几次 Listen & Repeat，系统会从漏词、替换词和外部逐词评分里自动收集。"
+            : "还没有可整理的发音错题。先完成几次练习，系统会从反馈里的“疑似音素训练点”自动收集。"}</div>`
+      }
+    </section>
+  `;
+}
+
+function renderPronunciationNotebookCard(item) {
+  return `
+    <article class="mistake-card">
+      <div class="mistake-card-head">
+        <div>
+          <span class="badge ${item.hasExternal ? "blue" : ""}">${item.hasExternal ? "含外部评分" : "Basic 训练点"}</span>
+          <h3>${escapeHtml(item.sound)}</h3>
+        </div>
+        <strong>${item.count}x</strong>
+      </div>
+      <p class="compact-copy">${escapeHtml(item.tip)}</p>
+      <div class="word-chip-list">
+        ${item.words.map((word) => `<span>${escapeHtml(word.word)} <small>${word.count}</small></span>`).join("")}
+      </div>
+      <div class="notebook-drill">
+        <span>回顾句</span>
+        <p>${escapeHtml(item.reviewSentence)}</p>
+      </div>
+      <div class="recent-source-list">
+        ${item.sources.slice(0, 3).map((source) => `
+          <button class="source-pill" data-review-history="${source.id}" title="${escapeHtml(source.prompt)}">
+            ${escapeHtml(source.type === "repeat" ? "Repeat" : "Interview")} · ${formatDate(source.createdAt)}
+          </button>
+        `).join("")}
+      </div>
+      <div class="control-actions">
+        <button class="primary-button" data-review-pronunciation="${escapeHtml(item.key)}"><span class="button-icon">▶</span>回顾这个音</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderWordPronunciationNotebookCard(item) {
+  const reasonBadges = item.reasons.map((reason) => `<span>${escapeHtml(getWordMistakeReasonLabel(reason))}</span>`).join("");
+  const heardAs = item.heardAs.slice(0, 4);
+  const scoreLabel = Number.isFinite(item.lowestScore) ? `${Math.round(item.lowestScore * 100)}%` : "";
+  return `
+    <article class="mistake-card word-mistake-card">
+      <div class="mistake-card-head">
+        <div>
+          <span class="badge ${item.hasExternal ? "blue" : ""}">${item.hasExternal ? "含逐词评分" : "Basic 错词"}</span>
+          <h3>${escapeHtml(item.word)}</h3>
+        </div>
+        <strong>${item.count}x</strong>
+      </div>
+      <div class="word-breakdown">
+        <span>拆读辅助</span>
+        <div class="breakdown-parts">
+          ${item.breakdown.map((part) => `<b>${escapeHtml(part)}</b>`).join("")}
+        </div>
+        <small>${escapeHtml(item.stressHint)}</small>
+      </div>
+      <div class="word-mistake-tags">
+        ${reasonBadges}
+        ${scoreLabel ? `<span>最低逐词分 ${scoreLabel}</span>` : ""}
+        ${item.phonemeSounds.map((sound) => `<span>${escapeHtml(sound)}</span>`).join("")}
+      </div>
+      ${
+        heardAs.length
+          ? `<div class="heard-as-list">
+              <span>常被听成</span>
+              ${heardAs.map((entry) => `<strong>${escapeHtml(entry.word)} <small>${entry.count}</small></strong>`).join("")}
+            </div>`
+          : ""
+      }
+      <div class="notebook-drill">
+        <span>三段练习</span>
+        <p>${escapeHtml(item.word)} → the ${escapeHtml(item.word)} → ${escapeHtml(item.practiceLine)}</p>
+      </div>
+      <div class="recent-source-list">
+        ${item.sources.slice(0, 3).map((source) => `
+          <button class="source-pill" data-review-history="${source.id}" title="${escapeHtml(source.prompt)}">
+            ${escapeHtml(source.type === "repeat" ? "Repeat" : "Interview")} · ${formatDate(source.createdAt)}
+          </button>
+        `).join("")}
+      </div>
+      <div class="control-actions word-action-row">
+        <button class="ghost-button" data-speak-word-slow="${escapeHtml(item.key)}"><span class="button-icon">◌</span>慢速听</button>
+        <button class="ghost-button" data-speak-word="${escapeHtml(item.key)}"><span class="button-icon">▶</span>正常听</button>
+        <button class="primary-button" data-review-word-pronunciation="${escapeHtml(item.key)}"><span class="button-icon">↻</span>放进 Repeat</button>
+      </div>
+    </article>
+  `;
+}
+
+function buildPronunciationNotebook(history = loadHistory()) {
+  const buckets = new Map();
+  history.forEach((entry) => {
+    const focusItems = entry.pronunciation?.phonemeFocus || [];
+    const seenInEntry = new Set();
+    focusItems.forEach((focus) => {
+      const normalized = normalizePronunciationFocusItem(focus);
+      if (!normalized.key || seenInEntry.has(normalized.key)) return;
+      seenInEntry.add(normalized.key);
+      if (!buckets.has(normalized.key)) {
+        buckets.set(normalized.key, {
+          ...normalized,
+          count: 0,
+          wordCounts: new Map(),
+          sources: [],
+          hasExternal: false,
+          lastSeen: ""
+        });
+      }
+      const bucket = buckets.get(normalized.key);
+      bucket.count += 1;
+      bucket.hasExternal = bucket.hasExternal || Boolean(entry.pronunciation?.external) || normalized.hasExternal;
+      bucket.lastSeen = !bucket.lastSeen || new Date(entry.createdAt) > new Date(bucket.lastSeen) ? entry.createdAt : bucket.lastSeen;
+      normalized.words.forEach((word) => {
+        if (!word) return;
+        bucket.wordCounts.set(word, (bucket.wordCounts.get(word) || 0) + 1);
+      });
+      bucket.sources.push({
+        id: entry.id,
+        type: entry.type,
+        prompt: entry.prompt,
+        createdAt: entry.createdAt,
+        score: entry.score
+      });
+    });
+  });
+
+  return [...buckets.values()]
+    .map((item) => ({
+      ...item,
+      words: [...item.wordCounts.entries()]
+        .map(([word, count]) => ({ word, count }))
+        .sort((a, b) => b.count - a.count || a.word.localeCompare(b.word))
+        .slice(0, 8),
+      reviewSentence: buildPronunciationReviewSentence(item)
+    }))
+    .sort((a, b) => b.count - a.count || new Date(b.lastSeen) - new Date(a.lastSeen))
+    .slice(0, 12);
+}
+
+function buildWordPronunciationNotebook(history = loadHistory()) {
+  const buckets = new Map();
+  history.forEach((entry) => {
+    const seenWordsInEntry = new Set();
+    collectWordMistakeCandidates(entry).forEach((candidate) => {
+      const normalized = normalizeWordMistakeCandidate(candidate);
+      if (!normalized) return;
+      if (!buckets.has(normalized.key)) {
+        buckets.set(normalized.key, {
+          key: normalized.key,
+          word: normalized.word,
+          count: 0,
+          reasons: new Set(),
+          heardAsCounts: new Map(),
+          phonemeSounds: new Set(),
+          sources: [],
+          hasExternal: false,
+          lowestScore: null,
+          lastSeen: ""
+        });
+      }
+      const bucket = buckets.get(normalized.key);
+      if (!seenWordsInEntry.has(normalized.key)) {
+        bucket.count += 1;
+        seenWordsInEntry.add(normalized.key);
+      }
+      bucket.reasons.add(normalized.reason);
+      bucket.hasExternal = bucket.hasExternal || normalized.hasExternal;
+      if (normalized.heardAs) {
+        bucket.heardAsCounts.set(normalized.heardAs, (bucket.heardAsCounts.get(normalized.heardAs) || 0) + 1);
+      }
+      if (normalized.sound) bucket.phonemeSounds.add(normalized.sound);
+      if (Number.isFinite(normalized.score)) {
+        bucket.lowestScore = bucket.lowestScore === null ? normalized.score : Math.min(bucket.lowestScore, normalized.score);
+      }
+      bucket.lastSeen = !bucket.lastSeen || new Date(entry.createdAt) > new Date(bucket.lastSeen) ? entry.createdAt : bucket.lastSeen;
+      if (!bucket.sources.some((source) => source.id === entry.id)) {
+        bucket.sources.push({
+          id: entry.id,
+          type: entry.type,
+          prompt: entry.prompt,
+          createdAt: entry.createdAt,
+          score: entry.score
+        });
+      }
+    });
+  });
+
+  return [...buckets.values()]
+    .map((item) => ({
+      ...item,
+      reasons: [...item.reasons],
+      heardAs: [...item.heardAsCounts.entries()]
+        .map(([word, count]) => ({ word, count }))
+        .sort((a, b) => b.count - a.count || a.word.localeCompare(b.word)),
+      phonemeSounds: [...item.phonemeSounds].slice(0, 4),
+      sources: item.sources.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+      breakdown: splitWordForPractice(item.word),
+      stressHint: getWordStressHint(item.word),
+      practiceLine: buildWordReviewSentence(item.word)
+    }))
+    .sort((a, b) => {
+      const scoreA = Number.isFinite(a.lowestScore) ? a.lowestScore : 1;
+      const scoreB = Number.isFinite(b.lowestScore) ? b.lowestScore : 1;
+      return b.count - a.count || scoreA - scoreB || new Date(b.lastSeen) - new Date(a.lastSeen);
+    })
+    .slice(0, 20);
+}
+
+function collectWordMistakeCandidates(entry) {
+  const candidates = [];
+  if (entry.type === "repeat" && Array.isArray(entry.alignment)) {
+    entry.alignment.forEach((item) => {
+      if (item.type === "missing" || item.type === "substitute") {
+        candidates.push({
+          word: item.ref,
+          heardAs: item.hyp,
+          reason: "repeat-mismatch",
+          hasExternal: false
+        });
+      }
+    });
+  }
+
+  const external = entry.pronunciation?.external || entry.externalPronunciation || {};
+  const externalWords = Array.isArray(external.words) ? external.words : [];
+  externalWords.forEach((wordItem) => {
+    const score = normalizeNotebookScore(
+      wordItem.score ?? wordItem.accuracyScore ?? wordItem.AccuracyScore ?? wordItem.pronunciationScore ?? wordItem.PronScore
+    );
+    const errorType = cleanupSpacing(wordItem.errorType || wordItem.ErrorType || wordItem.error || "");
+    const hasExplicitError = Boolean(errorType && !/none|correct|accurate/i.test(errorType));
+    if ((Number.isFinite(score) && score < 0.78) || hasExplicitError) {
+      candidates.push({
+        word: wordItem.word || wordItem.Word || wordItem.text || wordItem.Text,
+        reason: "low-word-score",
+        score,
+        hasExternal: true
+      });
+    }
+  });
+
+  (entry.pronunciation?.phonemeFocus || []).forEach((focus) => {
+    const normalized = normalizePronunciationFocusItem(focus);
+    normalized.words.forEach((word) => {
+      candidates.push({
+        word,
+        reason: "phoneme-focus",
+        sound: normalized.sound,
+        hasExternal: normalized.hasExternal
+      });
+    });
+  });
+
+  return candidates;
+}
+
+function normalizeWordMistakeCandidate(candidate) {
+  const word = normalizeNotebookWord(candidate.word);
+  if (!isUsefulNotebookWord(word)) return null;
+  const heardAs = normalizeNotebookWord(candidate.heardAs);
+  const score = normalizeNotebookScore(candidate.score);
+  return {
+    key: word,
+    word,
+    heardAs: heardAs && heardAs !== word ? heardAs : "",
+    reason: candidate.reason || "repeat-mismatch",
+    sound: cleanupSpacing(candidate.sound || ""),
+    score,
+    hasExternal: Boolean(candidate.hasExternal || candidate.reason === "low-word-score")
+  };
+}
+
+function normalizeNotebookWord(value) {
+  return cleanupSpacing(value || "")
+    .toLowerCase()
+    .replace(/^[^a-z]+|[^a-z]+$/g, "")
+    .replace(/[^a-z'-]/g, "");
+}
+
+function normalizeNotebookScore(value) {
+  const score = Number(value);
+  if (!Number.isFinite(score)) return null;
+  return score > 1 ? Math.max(0, Math.min(1, score / 100)) : Math.max(0, Math.min(1, score));
+}
+
+function isUsefulNotebookWord(word) {
+  const stopwords = new Set([
+    "a", "an", "the", "to", "of", "in", "on", "at", "by", "for", "and", "or", "but",
+    "is", "am", "are", "was", "were", "be", "been", "being", "i", "me", "my", "you",
+    "your", "he", "she", "we", "they", "it", "its", "his", "her", "our", "their",
+    "do", "does", "did", "can", "will", "would", "should", "could"
+  ]);
+  return Boolean(word && word.length > 2 && !stopwords.has(word));
+}
+
+function splitWordForPractice(word) {
+  const overrides = {
+    academic: ["a", "ca", "DE", "mic"],
+    assignment: ["a", "SSIGN", "ment"],
+    available: ["a", "VAI", "la", "ble"],
+    because: ["be", "CAUSE"],
+    classmate: ["CLASS", "mate"],
+    comfortable: ["COMF", "ta", "ble"],
+    communication: ["co", "mmu", "ni", "CA", "tion"],
+    convenient: ["con", "VE", "nient"],
+    development: ["de", "VE", "lop", "ment"],
+    different: ["DI", "ffe", "rent"],
+    education: ["e", "du", "CA", "tion"],
+    environment: ["en", "VI", "ron", "ment"],
+    experience: ["ex", "PE", "ri", "ence"],
+    important: ["im", "POR", "tant"],
+    information: ["in", "for", "MA", "tion"],
+    interesting: ["IN", "ter", "est", "ing"],
+    library: ["LI", "bra", "ry"],
+    opportunity: ["o", "ppor", "TU", "ni", "ty"],
+    presentation: ["pre", "sen", "TA", "tion"],
+    professor: ["pro", "FE", "ssor"],
+    responsibility: ["re", "spon", "si", "BI", "li", "ty"],
+    technology: ["tech", "NO", "lo", "gy"],
+    university: ["u", "ni", "VER", "si", "ty"]
+  };
+  const clean = normalizeNotebookWord(word);
+  if (overrides[clean]) return overrides[clean];
+  if (clean.length <= 5) return [clean];
+
+  const chunks = [];
+  let current = "";
+  const vowels = "aeiouy";
+  for (let index = 0; index < clean.length; index += 1) {
+    const char = clean[index];
+    const next = clean[index + 1] || "";
+    current += char;
+    if (vowels.includes(char) && !vowels.includes(next) && current.length >= 2 && chunks.length < 4) {
+      chunks.push(current);
+      current = "";
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks.length ? chunks : [clean];
+}
+
+function getWordStressHint(word) {
+  const clean = normalizeNotebookWord(word);
+  if (/(tion|sion|cian)$/.test(clean)) return "常见规律：-tion/-sion 前一拍更明显；最终请用词典音标确认。";
+  if (/(ic|ical|ity|ety)$/.test(clean)) return "常见规律：-ic/-ity 附近常有重音；先慢速跟读再连成整词。";
+  if (clean.length <= 5) return "短词先把元音和词尾说完整，再放回短语里。";
+  return "拆读只是练习辅助，不等于官方音标；不确定时用词典确认重音。";
+}
+
+function buildWordReviewSentence(word) {
+  const clean = normalizeNotebookWord(word);
+  const examples = {
+    academic: "The academic schedule is busy this semester.",
+    assignment: "I finished the assignment before dinner.",
+    available: "The study room is available this afternoon.",
+    because: "I chose this class because it is useful.",
+    classmate: "My classmate helped me review the notes.",
+    comfortable: "The library is quiet and comfortable.",
+    communication: "Clear communication helps the group work better.",
+    convenient: "Online registration is convenient for students.",
+    development: "This activity supports my language development.",
+    different: "I tried a different method this time.",
+    education: "Education gives people more choices.",
+    environment: "A quiet environment helps me focus.",
+    experience: "This experience taught me to plan earlier.",
+    important: "Time management is important for students.",
+    information: "The professor gave us useful information.",
+    interesting: "The lecture was interesting and practical.",
+    library: "The library will extend its hours this week.",
+    opportunity: "This project gave me a good opportunity.",
+    presentation: "I gave a presentation in class today.",
+    professor: "The professor explained the problem clearly.",
+    responsibility: "Teamwork requires responsibility and patience.",
+    technology: "Technology makes online learning easier.",
+    university: "The university offers many student clubs."
+  };
+  return examples[clean] || `I will practice the word ${clean} slowly and clearly.`;
+}
+
+function getWordMistakeReasonLabel(reason) {
+  const labels = {
+    "repeat-mismatch": "Repeat 错词",
+    "low-word-score": "逐词低分",
+    "phoneme-focus": "关联音素"
+  };
+  return labels[reason] || reason;
+}
+
+function countNotebookSources(notebook) {
+  return new Set(notebook.flatMap((item) => item.sources.map((source) => source.id))).size;
+}
+
+function normalizePronunciationFocusItem(focus) {
+  const sound = cleanupSpacing(focus?.sound || focus?.phoneme || focus?.label || "pronunciation focus");
+  const key = sound.toLowerCase().replace(/[^a-z0-9θð/ -]+/gi, "").replace(/\s+/g, "-");
+  const words = Array.isArray(focus?.words)
+    ? focus.words
+    : String(focus?.word || focus?.label || "").split(/[,\s/]+/);
+  return {
+    key,
+    sound,
+    label: cleanupSpacing(focus?.label || ""),
+    tip: cleanupSpacing(focus?.tip || focus?.errorType || "慢速读清楚这个音，再放回完整句里。"),
+    words: [...new Set(words.map((word) => cleanupSpacing(String(word).toLowerCase())).filter((word) => word && word.length > 1))].slice(0, 8),
+    hasExternal: /外部|azure|phoneme|score/i.test(`${focus?.tip || ""} ${focus?.errorType || ""}`)
+  };
+}
+
+function buildPronunciationReviewSentence(item) {
+  const words = [...item.wordCounts.keys()].slice(0, 5);
+  if (!words.length) return `Today I will practice the sound ${item.sound}.`;
+  const list = words.length === 1
+    ? words[0]
+    : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+  return `Today I will practice the words ${list}.`;
+}
+
+function startPronunciationReview(key) {
+  const item = buildPronunciationNotebook().find((entry) => entry.key === key);
+  if (!item) {
+    showToast("没有找到这个发音错题。");
+    return;
+  }
+  stopIfRecording();
+  resetCoachSession(false);
+  state.currentRepeat = {
+    id: `pron-review-${item.key}`,
+    type: "repeat",
+    category: "Pronunciation Notebook",
+    difficulty: "Review",
+    text: item.reviewSentence,
+    focus: `${item.sound}: ${item.tip}`
+  };
+  state.mode = "repeat";
+  state.tab = "practice";
+  state.full.active = false;
+  state.full.complete = false;
+  clearCurrentWork(true);
+  state.showSentence = true;
+  state.status = `正在回顾 ${item.sound}`;
+  render();
+}
+
+function startWordPronunciationReview(key) {
+  const item = buildWordPronunciationNotebook().find((entry) => entry.key === key);
+  if (!item) {
+    showToast("没有找到这个单词错题。");
+    return;
+  }
+  stopIfRecording();
+  resetCoachSession(false);
+  state.currentRepeat = {
+    id: `word-review-${item.key}`,
+    type: "repeat",
+    category: "Word Notebook",
+    difficulty: "Review",
+    text: item.practiceLine,
+    focus: `${item.word}: ${item.breakdown.join(" / ")} · ${item.stressHint}`
+  };
+  state.mode = "repeat";
+  state.tab = "practice";
+  state.full.active = false;
+  state.full.complete = false;
+  clearCurrentWork(true);
+  state.showSentence = true;
+  state.status = `正在回顾 ${item.word}`;
+  render();
+}
+
+function speakNotebookWord(key, slow = false) {
+  const item = buildWordPronunciationNotebook().find((entry) => entry.key === key);
+  if (!item) {
+    showToast("没有找到这个单词错题。");
+    return;
+  }
+  const text = slow
+    ? `${item.word}. ${item.breakdown.join(" ")}. ${item.word}. the ${item.word}.`
+    : item.practiceLine;
+  speakText(text, slow ? 0.68 : 0.9, slow ? `正在慢速播放 ${item.word}` : `正在播放 ${item.word}`);
+}
+
+function speakText(text, rate = 0.9, statusMessage = "正在播放示范") {
+  if (!window.speechSynthesis) {
+    showToast("当前浏览器不支持语音播放。");
+    return;
+  }
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "en-US";
+  utterance.rate = rate;
+  utterance.pitch = 1;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
+  state.status = statusMessage;
+  render();
+}
+
 function renderLocalDataPanel(history = loadHistory()) {
   const coachSessions = loadCoachSessions();
   const hasCoachProfile = Boolean(localStorage.getItem(COACH_PROFILE_STORAGE_KEY));
@@ -1910,6 +2460,29 @@ function bindEvents() {
 
   document.querySelectorAll("[data-review-history]").forEach((button) => {
     button.addEventListener("click", () => reviewHistory(button.dataset.reviewHistory));
+  });
+
+  document.querySelectorAll("[data-review-pronunciation]").forEach((button) => {
+    button.addEventListener("click", () => startPronunciationReview(button.dataset.reviewPronunciation));
+  });
+
+  document.querySelectorAll("[data-mistake-book-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.mistakeBookMode = button.dataset.mistakeBookMode;
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-review-word-pronunciation]").forEach((button) => {
+    button.addEventListener("click", () => startWordPronunciationReview(button.dataset.reviewWordPronunciation));
+  });
+
+  document.querySelectorAll("[data-speak-word]").forEach((button) => {
+    button.addEventListener("click", () => speakNotebookWord(button.dataset.speakWord, false));
+  });
+
+  document.querySelectorAll("[data-speak-word-slow]").forEach((button) => {
+    button.addEventListener("click", () => speakNotebookWord(button.dataset.speakWordSlow, true));
   });
 
   document.querySelectorAll("[data-start-coach-history]").forEach((button) => {
@@ -2859,6 +3432,7 @@ function saveStarterHistoryItem(question, transcript, feedback) {
     strengths: feedback.result === "pass" ? [feedback.summary] : [],
     detailScores: feedback.fullFeedback?.detailScores || [],
     pronunciation: feedback.fullFeedback?.pronunciation || null,
+    alignment: feedback.fullFeedback?.alignment || [],
     rubricProfile: feedback.fullFeedback?.rubricProfile || null,
     confidence: feedback.fullFeedback?.confidence || null
   });
@@ -3147,6 +3721,7 @@ async function analyzeCurrent() {
       strengths: feedback.strengths,
       detailScores: feedback.detailScores,
       pronunciation: feedback.pronunciation,
+      alignment: feedback.alignment || [],
       rubricProfile: feedback.rubricProfile,
       comparison: feedback.comparison,
       confidence: feedback.confidence
@@ -3416,6 +3991,7 @@ function createFeedbackFromHistoryItem(item, question) {
     ],
     detailScores: item.detailScores || [],
     pronunciation: item.pronunciation || null,
+    alignment: item.alignment || [],
     rubricProfile: item.rubricProfile || null,
     comparison: item.comparison || null,
     confidence: item.confidence || null

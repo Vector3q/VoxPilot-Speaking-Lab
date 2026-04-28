@@ -776,6 +776,194 @@ textarea {
   line-height: 1.45;
 }
 
+.mistake-book {
+  display: grid;
+  gap: 16px;
+}
+
+.notebook-summary {
+  border-left: 4px solid var(--teal);
+}
+
+.mistake-mode-toggle {
+  max-width: 420px;
+}
+
+.mistake-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mistake-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(217, 226, 236, 0.9);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow);
+}
+
+.mistake-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.mistake-card-head h3 {
+  margin: 10px 0 0;
+  font-size: 30px;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.mistake-card-head > strong {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.word-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.word-chip-list span {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.word-chip-list small {
+  color: var(--muted);
+}
+
+.word-mistake-card .mistake-card-head h3 {
+  font-size: 24px;
+  line-height: 1.15;
+}
+
+.word-breakdown {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(217, 226, 236, 0.9);
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+}
+
+.word-breakdown > span,
+.heard-as-list > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.breakdown-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.breakdown-parts b {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.word-breakdown small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.word-mistake-tags,
+.heard-as-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.word-mistake-tags span,
+.heard-as-list strong {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.heard-as-list strong {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.heard-as-list small {
+  color: inherit;
+  opacity: 0.75;
+}
+
+.notebook-drill {
+  padding: 12px;
+  border-left: 4px solid var(--orange);
+  border-radius: var(--radius-sm);
+  background: #fffbeb;
+}
+
+.notebook-drill span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.notebook-drill p {
+  margin: 6px 0 0;
+  line-height: 1.5;
+  font-weight: 700;
+}
+
+.recent-source-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.source-pill {
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.source-pill:hover {
+  color: var(--ink);
+  background: var(--surface-strong);
+}
+
+.word-action-row {
+  align-items: stretch;
+}
+
 .empty-feedback {
   display: grid;
   place-items: center;
@@ -1700,6 +1888,10 @@ textarea {
   }
 
   .starter-scaffold-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mistake-grid {
     grid-template-columns: 1fr;
   }
 }
