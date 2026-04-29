@@ -113,7 +113,9 @@ globalThis.__voxpilot = {
   startWordEchoDrill,
   analyzeWordDrillPart,
   startMistakeReview,
-  finishMistakeReviewCard
+  finishMistakeReviewCard,
+  splitWordForPractice,
+  getWordStressHint
 };
 `;
 
@@ -206,6 +208,8 @@ assert(notebook[0].words.some((item) => item.word === "library"), "pronunciation
 const wordNotebook = api.buildWordPronunciationNotebook();
 assert(wordNotebook.some((item) => item.word === "library" && item.heardAs.some((heard) => heard.word === "liberty")), "word notebook missed repeat substitutions");
 assert(wordNotebook.some((item) => item.word === "environment" && item.hasExternal), "word notebook missed external word scores");
+assert(JSON.stringify(api.splitWordForPractice("stores")) === JSON.stringify(["store", "z"]), "stores should be split as store + z");
+assert(api.getWordStressHint("stores").includes("/z/"), "stores hint should mention final z sound");
 api.startWordEchoDrill("library");
 assert(api.state.wordDrill.active === true, "word drill did not start");
 api.state.wordDrill.wordTranscript = "library";

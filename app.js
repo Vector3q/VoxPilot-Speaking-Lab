@@ -1845,11 +1845,15 @@ function splitWordForPractice(word) {
     presentation: ["pre", "sen", "TA", "tion"],
     professor: ["pro", "FE", "ssor"],
     responsibility: ["re", "spon", "si", "BI", "li", "ty"],
+    store: ["store"],
+    stores: ["store", "z"],
     technology: ["tech", "NO", "lo", "gy"],
     university: ["u", "ni", "VER", "si", "ty"]
   };
   const clean = normalizeNotebookWord(word);
   if (overrides[clean]) return overrides[clean];
+  const suffixBreakdown = splitCommonFinalSuffix(clean);
+  if (suffixBreakdown) return suffixBreakdown;
   if (clean.length <= 5) return [clean];
 
   const chunks = [];
@@ -1868,8 +1872,34 @@ function splitWordForPractice(word) {
   return chunks.length ? chunks : [clean];
 }
 
+function splitCommonFinalSuffix(clean) {
+  if (!clean || clean.length < 5) return null;
+  const voicedFinals = /[bdgvðlmnŋrwy]$/;
+  const voicelessFinals = /[ptkfsθ]$/;
+  if (/[^s]es$/.test(clean)) {
+    const base = clean.slice(0, -2);
+    if (/(s|x|z|ch|sh)$/.test(base)) return [base, "iz"];
+    if (base.endsWith("e")) return [base, voicedFinals.test(base.slice(-2, -1)) ? "z" : "s"];
+  }
+  if (/[^s]s$/.test(clean)) {
+    const base = clean.slice(0, -1);
+    if (base.endsWith("e")) return [base, voicedFinals.test(base.slice(-2, -1)) ? "z" : "s"];
+    if (voicelessFinals.test(base)) return [base, "s"];
+    return [base, "z"];
+  }
+  if (/ed$/.test(clean)) {
+    const base = clean.slice(0, -2);
+    if (/[td]$/.test(base)) return [base, "id"];
+    if (voicelessFinals.test(base)) return [base, "t"];
+    return [base, "d"];
+  }
+  return null;
+}
+
 function getWordStressHint(word) {
   const clean = normalizeNotebookWord(word);
+  if (clean === "stores") return "stores 是一音节，接近 /storz/；末尾 -s 在 /r/ 后发 /z/，不要读成 sto-re-s。";
+  if (/[^s]s$/.test(clean)) return "结尾 -s 可能读 /s/ 或 /z/；如果前面是浊音或元音，通常更接近 /z/。";
   if (/(tion|sion|cian)$/.test(clean)) return "常见规律：-tion/-sion 前一拍更明显；最终请用词典音标确认。";
   if (/(ic|ical|ity|ety)$/.test(clean)) return "常见规律：-ic/-ity 附近常有重音；先慢速跟读再连成整词。";
   if (clean.length <= 5) return "短词先把元音和词尾说完整，再放回短语里。";
