@@ -109,7 +109,11 @@ globalThis.__voxpilot = {
   loadCoachSessions,
   buildLocalDataSnapshot,
   buildPronunciationNotebook,
-  buildWordPronunciationNotebook
+  buildWordPronunciationNotebook,
+  startWordEchoDrill,
+  analyzeWordDrillPart,
+  startMistakeReview,
+  finishMistakeReviewCard
 };
 `;
 
@@ -202,5 +206,22 @@ assert(notebook[0].words.some((item) => item.word === "library"), "pronunciation
 const wordNotebook = api.buildWordPronunciationNotebook();
 assert(wordNotebook.some((item) => item.word === "library" && item.heardAs.some((heard) => heard.word === "liberty")), "word notebook missed repeat substitutions");
 assert(wordNotebook.some((item) => item.word === "environment" && item.hasExternal), "word notebook missed external word scores");
+api.startWordEchoDrill("library");
+assert(api.state.wordDrill.active === true, "word drill did not start");
+api.state.wordDrill.wordTranscript = "library";
+api.analyzeWordDrillPart("word");
+assert(api.state.wordDrill.wordCheck?.result === "pass", "word drill should pass exact word repetition");
+api.state.wordDrill.sentenceTranscript = "The library will extend its hours this week.";
+api.analyzeWordDrillPart("sentence");
+assert(api.state.wordDrill.sentenceCheck?.result === "pass", "word drill sentence should pass exact sentence repetition");
+api.startMistakeReview("weakest");
+assert(api.state.mistakeReview.active === true, "mistake review deck did not start");
+assert(api.state.mistakeReview.deck.length >= 1, "mistake review deck is empty");
+api.state.wordDrill.wordTranscript = api.state.wordDrill.word;
+api.analyzeWordDrillPart("word");
+api.state.wordDrill.sentenceTranscript = api.state.wordDrill.sentence;
+api.analyzeWordDrillPart("sentence");
+api.finishMistakeReviewCard("pass");
+assert(api.state.mistakeReview.results.length === 1, "mistake review did not record a completed card");
 
 console.log("VoxPilot smoke test passed");

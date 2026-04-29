@@ -32,6 +32,8 @@ const state = {
   ladder: loadLadderProfile(),
   coach: getDefaultCoachState(),
   starter: getDefaultStarterState(),
+  wordDrill: getDefaultWordDrillState(),
+  mistakeReview: getDefaultMistakeReviewState(),
   bankType: "all",
   bankDifficulty: "all",
   mistakeBookMode: "sounds",
@@ -1300,8 +1302,16 @@ function renderMistakeBookView() {
           : "音素错题展示系统推断的疑似训练点；如果你接了 Azure 或自定义发音 API，外部返回的 phoneme score 也会被放进这里。"}</p>
       </section>
 
+      ${isWordMode ? renderMistakeReviewEntry(wordNotebook) : ""}
+
+      ${isWordMode && state.mistakeReview.active ? renderMistakeReviewDeck() : ""}
+
+      ${isWordMode && !state.mistakeReview.active && state.wordDrill.active ? renderWordEchoDrill() : ""}
+
       ${
-        activeNotebook.length
+        state.mistakeReview.active
+          ? ""
+          : activeNotebook.length
           ? `<div class="mistake-grid">
               ${isWordMode
                 ? wordNotebook.map((item) => renderWordPronunciationNotebookCard(item)).join("")
@@ -1311,6 +1321,31 @@ function renderMistakeBookView() {
             ? "还没有可整理的单词错题。先做几次 Listen & Repeat，系统会从漏词、替换词和外部逐词评分里自动收集。"
             : "还没有可整理的发音错题。先完成几次练习，系统会从反馈里的“疑似音素训练点”自动收集。"}</div>`
       }
+    </section>
+  `;
+}
+
+function renderMistakeReviewEntry(wordNotebook) {
+  const highFrequencyCount = wordNotebook.filter((item) => item.count >= 2).length;
+  const recentCount = wordNotebook.filter((item) => isWithinDays(item.lastSeen, 7)).length;
+  return `
+    <section class="mistake-review-entry">
+      <div>
+        <span class="badge blue">Mistake Deck</span>
+        <h3>刷错词</h3>
+        <p class="compact-copy">一次只练一个词：先复述单词，再复述句子。练完划过，没稳的词会回到队尾。</p>
+      </div>
+      <div class="control-actions">
+        <button class="primary-button" data-start-mistake-review="weakest" ${wordNotebook.length ? "" : "disabled"}>
+          <span class="button-icon">▶</span>开始刷错词
+        </button>
+        <button class="ghost-button" data-start-mistake-review="frequent" ${highFrequencyCount ? "" : "disabled"}>
+          <span class="button-icon">↺</span>高频 ${highFrequencyCount}
+        </button>
+        <button class="ghost-button" data-start-mistake-review="recent" ${recentCount ? "" : "disabled"}>
+          <span class="button-icon">⏱</span>最近 ${recentCount}
+        </button>
+      </div>
     </section>
   `;
 }
@@ -1394,9 +1429,190 @@ function renderWordPronunciationNotebookCard(item) {
       <div class="control-actions word-action-row">
         <button class="ghost-button" data-speak-word-slow="${escapeHtml(item.key)}"><span class="button-icon">◌</span>慢速听</button>
         <button class="ghost-button" data-speak-word="${escapeHtml(item.key)}"><span class="button-icon">▶</span>正常听</button>
+        <button class="tool-button" data-start-word-drill="${escapeHtml(item.key)}"><span class="button-icon">◎</span>词句精练</button>
         <button class="primary-button" data-review-word-pronunciation="${escapeHtml(item.key)}"><span class="button-icon">↻</span>放进 Repeat</button>
       </div>
     </article>
+  `;
+}
+
+function renderWordEchoDrill(options = {}) {
+  const drill = state.wordDrill;
+  const wordRecording = state.isRecording && state.recordingTarget === "wordDrill" && drill.target === "word";
+  const sentenceRecording = state.isRecording && state.recordingTarget === "wordDrill" && drill.target === "sentence";
+  const blocked = state.isRecording && state.recordingTarget !== "wordDrill";
+  const inDeck = Boolean(options.inDeck);
+  return `
+    <section class="word-drill-capsule">
+      <div class="section-title-row">
+        <div>
+          <span class="badge blue">${inDeck ? "Deck Card" : "词句精练"}</span>
+          <h3>${escapeHtml(drill.word)}</h3>
+          <p class="compact-copy">先把单词读到能被识别，再放进完整句子。这个检查只用本地转写和 Basic 规则，不调用 AI。</p>
+        </div>
+        ${inDeck ? "" : `<button class="ghost-button" data-reset-word-drill="true"><span class="button-icon">×</span>关闭</button>`}
+      </div>
+
+      <div class="word-drill-grid">
+        <article class="word-drill-step ${drill.wordCheck ? `result-${drill.wordCheck.result}` : ""}">
+          <div class="word-drill-step-head">
+            <span>Step 1</span>
+            <strong>复述单词</strong>
+          </div>
+          <div class="word-drill-target">
+            <b>${escapeHtml(drill.word)}</b>
+            <small>${escapeHtml(drill.breakdown.join(" / "))}</small>
+          </div>
+          <p class="compact-copy">${escapeHtml(drill.stressHint)}</p>
+          <div class="control-actions">
+            <button class="ghost-button" data-word-drill-speak="word" data-word-drill-slow="true"><span class="button-icon">◌</span>慢速听</button>
+            <button class="ghost-button" data-word-drill-speak="word"><span class="button-icon">▶</span>正常听</button>
+            <button class="primary-button" data-word-drill-record="word" ${blocked ? "disabled" : ""}>
+              <span class="button-icon">${wordRecording ? "■" : "●"}</span>${wordRecording ? "停止" : "录单词"}
+            </button>
+            <button class="tool-button" data-check-word-drill="word"><span class="button-icon">✓</span>检查</button>
+          </div>
+          <label class="transcript-box">
+            <span>单词转写</span>
+            <textarea id="wordDrillWordInput" placeholder="${SpeechRecognitionApi ? "录音后会自动出现，也可以手动输入。" : "当前浏览器不支持自动识别，请手动输入。"}">${escapeHtml(drill.wordTranscript)}</textarea>
+          </label>
+          ${renderWordDrillCheck(drill.wordCheck)}
+        </article>
+
+        <article class="word-drill-step ${drill.sentenceCheck ? `result-${drill.sentenceCheck.result}` : ""}">
+          <div class="word-drill-step-head">
+            <span>Step 2</span>
+            <strong>复述句子</strong>
+          </div>
+          <div class="notebook-drill sentence-target">
+            <span>目标句</span>
+            <p>${escapeHtml(drill.sentence)}</p>
+          </div>
+          <div class="control-actions">
+            <button class="ghost-button" data-word-drill-speak="sentence" data-word-drill-slow="true"><span class="button-icon">◌</span>慢速听</button>
+            <button class="ghost-button" data-word-drill-speak="sentence"><span class="button-icon">▶</span>正常听</button>
+            <button class="primary-button" data-word-drill-record="sentence" ${blocked ? "disabled" : ""}>
+              <span class="button-icon">${sentenceRecording ? "■" : "●"}</span>${sentenceRecording ? "停止" : "录句子"}
+            </button>
+            <button class="tool-button" data-check-word-drill="sentence"><span class="button-icon">✓</span>检查</button>
+          </div>
+          <label class="transcript-box">
+            <span>句子转写</span>
+            <textarea id="wordDrillSentenceInput" placeholder="${SpeechRecognitionApi ? "录音后会自动出现，也可以手动输入。" : "当前浏览器不支持自动识别，请手动输入。"}">${escapeHtml(drill.sentenceTranscript)}</textarea>
+          </label>
+          ${renderWordDrillCheck(drill.sentenceCheck)}
+        </article>
+      </div>
+    </section>
+  `;
+}
+
+function renderWordDrillCheck(check) {
+  if (!check) {
+    return `<div class="word-drill-feedback muted">等待检查。你可以先听、再录，也可以直接输入自己说出的内容。</div>`;
+  }
+  const labelMap = {
+    pass: "通过",
+    almost: "接近",
+    retry: "再练一次"
+  };
+  return `
+    <div class="word-drill-feedback result-${check.result}">
+      <strong>${labelMap[check.result] || "结果"}${Number.isFinite(check.score) ? ` · ${Math.round(check.score * 100)}%` : ""}</strong>
+      <p>${escapeHtml(check.message)}</p>
+      ${check.nextAction ? `<span>${escapeHtml(check.nextAction)}</span>` : ""}
+    </div>
+  `;
+}
+
+function renderMistakeReviewDeck() {
+  const review = state.mistakeReview;
+  if (review.complete) return renderMistakeReviewSummary();
+  const current = review.deck[review.index];
+  if (!current) return renderMistakeReviewSummary();
+  const progress = `${Math.min(review.index + 1, review.deck.length)} / ${review.deck.length}`;
+  const outcome = getMistakeReviewOutcome();
+  const marked = review.starredKeys.includes(current.key);
+  return `
+    <section class="mistake-review-deck">
+      <div class="deck-topline">
+        <div>
+          <span class="badge blue">${escapeHtml(getMistakeReviewFilterLabel(review.filter))}</span>
+          <h3>错词刷题</h3>
+          <p class="compact-copy">当前第 ${progress} 题。完成单词和句子后，划过进入下一题；不稳的词会回到队尾。</p>
+        </div>
+        <div class="deck-progress">
+          <strong>${progress}</strong>
+          <span>${review.results.length} 已完成</span>
+        </div>
+      </div>
+
+      <div class="deck-card-shell" data-mistake-review-card="true">
+        <div class="deck-card-meta">
+          <span>错误 ${current.count}x</span>
+          ${current.heardAs?.length ? `<span>常被听成 ${escapeHtml(current.heardAs[0].word)}</span>` : ""}
+          ${Number.isFinite(current.lowestScore) ? `<span>最低逐词分 ${Math.round(current.lowestScore * 100)}%</span>` : ""}
+          ${marked ? `<span>重点</span>` : ""}
+        </div>
+        ${renderWordEchoDrill({ inDeck: true })}
+      </div>
+
+      <div class="deck-action-bar">
+        <button class="ghost-button" data-mistake-review-action="retry"><span class="button-icon">↺</span>再练一次</button>
+        <button class="primary-button" data-mistake-review-action="pass">
+          <span class="button-icon">→</span>${outcome === "pass" ? "划过" : "先划过"}
+        </button>
+        <button class="tool-button ${marked ? "active" : ""}" data-mistake-review-star="true"><span class="button-icon">★</span>${marked ? "已重点" : "加入重点"}</button>
+        <button class="ghost-button" data-end-mistake-review="true"><span class="button-icon">×</span>结束</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderMistakeReviewSummary() {
+  const review = state.mistakeReview;
+  const counts = review.results.reduce(
+    (acc, item) => {
+      acc[item.outcome] = (acc[item.outcome] || 0) + 1;
+      return acc;
+    },
+    { pass: 0, almost: 0, retry: 0 }
+  );
+  const weakItems = review.results
+    .filter((item) => item.outcome !== "pass")
+    .slice(-5)
+    .reverse();
+  return `
+    <section class="mistake-review-deck summary">
+      <div class="deck-topline">
+        <div>
+          <span class="badge blue">本轮完成</span>
+          <h3>错词刷题总结</h3>
+          <p class="compact-copy">这一轮结果只保存在当前页面状态里；回到错题本后仍可重新生成新一轮。</p>
+        </div>
+        <div class="deck-progress">
+          <strong>${review.results.length}</strong>
+          <span>本轮题数</span>
+        </div>
+      </div>
+      <div class="summary-grid">
+        <div class="summary-tile"><span>掌握</span><strong>${counts.pass || 0}</strong></div>
+        <div class="summary-tile"><span>接近</span><strong>${counts.almost || 0}</strong></div>
+        <div class="summary-tile"><span>待复练</span><strong>${counts.retry || 0}</strong></div>
+        <div class="summary-tile"><span>重点</span><strong>${review.starredKeys.length}</strong></div>
+      </div>
+      ${
+        weakItems.length
+          ? `<div class="deck-weak-list">
+              ${weakItems.map((item) => `<span>${escapeHtml(item.word)} · ${escapeHtml(getMistakeReviewOutcomeLabel(item.outcome))}</span>`).join("")}
+            </div>`
+          : ""
+      }
+      <div class="control-actions">
+        <button class="primary-button" data-start-mistake-review="retry"><span class="button-icon">↺</span>再刷未掌握</button>
+        <button class="ghost-button" data-end-mistake-review="true"><span class="button-icon">←</span>回到错题本</button>
+      </div>
+    </section>
   `;
 }
 
@@ -1805,6 +2021,345 @@ function speakText(text, rate = 0.9, statusMessage = "正在播放示范") {
   window.speechSynthesis.speak(utterance);
   state.status = statusMessage;
   render();
+}
+
+function createWordDrillStateFromNotebookItem(item) {
+  return {
+    ...getDefaultWordDrillState(),
+    active: true,
+    key: item.key,
+    word: item.word,
+    sentence: item.practiceLine,
+    breakdown: item.breakdown,
+    stressHint: item.stressHint,
+    sourceCount: item.count
+  };
+}
+
+function startWordEchoDrill(key) {
+  const item = buildWordPronunciationNotebook().find((entry) => entry.key === key);
+  if (!item) {
+    showToast("没有找到这个单词错题。");
+    return;
+  }
+  stopIfRecording();
+  resetCoachSession(false);
+  state.mistakeReview = getDefaultMistakeReviewState();
+  state.mistakeBookMode = "words";
+  state.wordDrill = createWordDrillStateFromNotebookItem(item);
+  state.status = `开始词句精练：${item.word}`;
+  render();
+}
+
+function resetWordEchoDrill(renderNow = true) {
+  if (state.wordDrill?.wordAudioUrl) URL.revokeObjectURL(state.wordDrill.wordAudioUrl);
+  if (state.wordDrill?.sentenceAudioUrl) URL.revokeObjectURL(state.wordDrill.sentenceAudioUrl);
+  state.wordDrill = getDefaultWordDrillState();
+  if (state.recordingTarget === "wordDrill") state.recordingTarget = "main";
+  if (renderNow) render();
+}
+
+function startMistakeReview(filter = "weakest") {
+  const deck = buildMistakeReviewDeck(filter);
+  if (!deck.length) {
+    showToast("当前没有符合条件的单词错题。");
+    return;
+  }
+  stopIfRecording();
+  resetCoachSession(false);
+  resetWordEchoDrill(false);
+  state.mistakeBookMode = "words";
+  state.mistakeReview = {
+    ...getDefaultMistakeReviewState(),
+    active: true,
+    filter,
+    deck,
+    startedAt: new Date().toISOString()
+  };
+  loadMistakeReviewCard(0);
+  state.status = "开始刷错词";
+  render();
+}
+
+function buildMistakeReviewDeck(filter = "weakest") {
+  let items = buildWordPronunciationNotebook();
+  if (filter === "frequent") items = items.filter((item) => item.count >= 2);
+  if (filter === "recent") items = items.filter((item) => isWithinDays(item.lastSeen, 7));
+  if (filter === "retry" && state.mistakeReview.results.length) {
+    const retryKeys = new Set(state.mistakeReview.results.filter((item) => item.outcome !== "pass").map((item) => item.key));
+    items = items.filter((item) => retryKeys.has(item.key));
+  }
+  return items
+    .map((item) => ({
+      ...item,
+      priority: getMistakeReviewPriority(item),
+      reviewLoops: 0
+    }))
+    .sort((a, b) => b.priority - a.priority || b.count - a.count || a.word.localeCompare(b.word))
+    .slice(0, 24);
+}
+
+function getMistakeReviewPriority(item) {
+  const scorePenalty = Number.isFinite(item.lowestScore) ? 1 - item.lowestScore : 0;
+  const recentBoost = isWithinDays(item.lastSeen, 7) ? 1.2 : 0;
+  const externalBoost = item.hasExternal ? 0.8 : 0;
+  return item.count * 1.7 + item.heardAs.length * 0.7 + item.reasons.length * 0.35 + scorePenalty * 2 + recentBoost + externalBoost;
+}
+
+function loadMistakeReviewCard(index) {
+  const item = state.mistakeReview.deck[index];
+  if (!item) {
+    completeMistakeReview();
+    return;
+  }
+  state.mistakeReview.index = index;
+  state.wordDrill = createWordDrillStateFromNotebookItem(item);
+}
+
+function finishMistakeReviewCard(action = "pass") {
+  if (!state.mistakeReview.active || state.mistakeReview.complete) return;
+  const current = state.mistakeReview.deck[state.mistakeReview.index];
+  if (!current) {
+    completeMistakeReview();
+    render();
+    return;
+  }
+  const outcome = action === "retry" ? "retry" : getMistakeReviewOutcome();
+  state.mistakeReview.results.push({
+    key: current.key,
+    word: current.word,
+    action,
+    outcome,
+    wordResult: state.wordDrill.wordCheck?.result || "none",
+    sentenceResult: state.wordDrill.sentenceCheck?.result || "none",
+    createdAt: new Date().toISOString()
+  });
+  if (action === "retry" && current.reviewLoops < 2) {
+    state.mistakeReview.deck.push({
+      ...current,
+      reviewLoops: current.reviewLoops + 1
+    });
+  }
+  const nextIndex = state.mistakeReview.index + 1;
+  if (nextIndex >= state.mistakeReview.deck.length) completeMistakeReview();
+  else loadMistakeReviewCard(nextIndex);
+  state.status = action === "retry" ? "已放回队尾" : "已划过，进入下一题";
+  render();
+}
+
+function toggleMistakeReviewStar() {
+  const current = state.mistakeReview.deck[state.mistakeReview.index];
+  if (!current) return;
+  if (state.mistakeReview.starredKeys.includes(current.key)) {
+    state.mistakeReview.starredKeys = state.mistakeReview.starredKeys.filter((key) => key !== current.key);
+  } else {
+    state.mistakeReview.starredKeys.push(current.key);
+  }
+  render();
+}
+
+function completeMistakeReview() {
+  state.mistakeReview.complete = true;
+  resetWordEchoDrill(false);
+  state.status = "本轮错词刷题完成";
+}
+
+function endMistakeReview() {
+  stopIfRecording();
+  state.mistakeReview = getDefaultMistakeReviewState();
+  resetWordEchoDrill(false);
+  state.status = "已回到错题本";
+  render();
+}
+
+function getMistakeReviewOutcome() {
+  const wordResult = state.wordDrill.wordCheck?.result || "none";
+  const sentenceResult = state.wordDrill.sentenceCheck?.result || "none";
+  if (wordResult === "pass" && sentenceResult === "pass") return "pass";
+  if (wordResult === "retry" || sentenceResult === "retry" || wordResult === "none" || sentenceResult === "none") return "retry";
+  return "almost";
+}
+
+function getMistakeReviewOutcomeLabel(outcome) {
+  const labels = {
+    pass: "掌握",
+    almost: "接近",
+    retry: "待复练"
+  };
+  return labels[outcome] || outcome;
+}
+
+function getMistakeReviewFilterLabel(filter) {
+  const labels = {
+    weakest: "优先级队列",
+    frequent: "高频错词",
+    recent: "最近 7 天",
+    retry: "未掌握复刷"
+  };
+  return labels[filter] || "错词队列";
+}
+
+function toggleWordDrillRecording(target = "word") {
+  if (!state.wordDrill.active) {
+    showToast("先从单词错题卡片开始词句精练。");
+    return;
+  }
+  if (state.isRecording && state.recordingTarget === "wordDrill" && state.wordDrill.target === target) {
+    stopRecording();
+    return;
+  }
+  if (state.isRecording) {
+    showToast("请先停止当前录音。");
+    return;
+  }
+  state.wordDrill.target = target === "sentence" ? "sentence" : "word";
+  state.recordingTarget = "wordDrill";
+  startRecording();
+}
+
+function speakWordDrillPart(part = "word", slow = false) {
+  if (!state.wordDrill.active) {
+    showToast("先开始一个词句精练。");
+    return;
+  }
+  const isSentence = part === "sentence";
+  const text = isSentence
+    ? state.wordDrill.sentence
+    : slow
+      ? `${state.wordDrill.word}. ${state.wordDrill.breakdown.join(" ")}. ${state.wordDrill.word}.`
+      : state.wordDrill.word;
+  speakText(
+    text,
+    slow ? 0.68 : isSentence ? 0.88 : 0.92,
+    isSentence ? "正在播放目标句" : `正在播放 ${state.wordDrill.word}`
+  );
+}
+
+function analyzeWordDrillPart(part = "word") {
+  if (!state.wordDrill.active) return;
+  const target = part === "sentence" ? "sentence" : "word";
+  const check = target === "sentence" ? checkWordDrillSentence() : checkWordDrillWord();
+  if (target === "sentence") state.wordDrill.sentenceCheck = check;
+  else state.wordDrill.wordCheck = check;
+  state.status = check.result === "pass" ? "词句精练通过" : "词句精练已检查";
+  render();
+}
+
+function checkWordDrillWord() {
+  const transcript = cleanupSpacing(state.wordDrill.wordTranscript);
+  state.wordDrill.wordTranscript = transcript;
+  if (!transcript) {
+    return {
+      result: "retry",
+      score: 0,
+      message: "还没有单词转写。请先录音，或者手动输入你刚才说出的词。",
+      nextAction: "先听慢速示范，再只说这个单词一次。"
+    };
+  }
+  const targetWord = normalizeNotebookWord(state.wordDrill.word);
+  const spokenWords = normalizeWords(transcript);
+  const best = getBestWordMatch(targetWord, spokenWords);
+  if (best.score >= 0.92) {
+    return {
+      result: "pass",
+      score: best.score,
+      message: `系统识别到了 ${state.wordDrill.word}。下一步把它放进完整句子里。`,
+      nextAction: "进入 Step 2，听一句、复述一句。"
+    };
+  }
+  if (best.score >= 0.72) {
+    return {
+      result: "almost",
+      score: best.score,
+      message: `很接近，但本地识别更像 ${best.word || "另一个词"}。这通常说明元音、重音或词尾还不够稳。`,
+      nextAction: "再慢速听一次，先夸张一点读出重音和词尾。"
+    };
+  }
+  return {
+    result: "retry",
+    score: best.score,
+    message: `这次还没有稳定识别到 ${state.wordDrill.word}。`,
+    nextAction: "先拆成小块读，再连成完整单词。"
+  };
+}
+
+function checkWordDrillSentence() {
+  const transcript = cleanupSpacing(state.wordDrill.sentenceTranscript);
+  state.wordDrill.sentenceTranscript = transcript;
+  if (!transcript) {
+    return {
+      result: "retry",
+      score: 0,
+      message: "还没有句子转写。请先录一句完整目标句。",
+      nextAction: "先听目标句，再尽量完整复述。"
+    };
+  }
+  const question = {
+    id: `word-drill-${state.wordDrill.key}`,
+    type: "repeat",
+    text: state.wordDrill.sentence
+  };
+  const duration = state.wordDrill.sentenceDuration || state.duration || 0;
+  const feedback = createRepeatFeedback(question, transcript, duration, {
+    audioStats: state.wordDrill.sentenceAudioStats || null,
+    recognitionStats: state.recognitionStats
+  });
+  const targetWord = normalizeNotebookWord(state.wordDrill.word);
+  const includesWord = normalizeWords(transcript).includes(targetWord);
+  const recallScore = getDetailScoreValue(feedback.detailScores, "完整复述") ?? ((feedback.score - 1) / 5);
+  const score = Math.max(0, Math.min(1, recallScore));
+  const result = includesWord && score >= 0.72 ? "pass" : score >= 0.52 ? "almost" : "retry";
+  return {
+    result,
+    score,
+    message: includesWord
+      ? `目标词已经放进句子里了。句子完整度约 ${Math.round(score * 100)}%。`
+      : `句子里还没有稳定出现 ${state.wordDrill.word}，先把目标词说清楚再接后半句。`,
+    nextAction: result === "pass" ? "可以回到错题本继续下一个词。" : "再听一次目标句，注意不要漏掉目标词。",
+    feedback
+  };
+}
+
+function getBestWordMatch(targetWord, spokenWords) {
+  if (!targetWord || !spokenWords.length) return { word: "", score: 0 };
+  return spokenWords.reduce(
+    (best, word) => {
+      const score = getWordSimilarity(targetWord, word);
+      return score > best.score ? { word, score } : best;
+    },
+    { word: "", score: 0 }
+  );
+}
+
+function getWordSimilarity(a, b) {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  const distance = getEditDistance(a, b);
+  return Math.max(0, 1 - distance / Math.max(a.length, b.length));
+}
+
+function getEditDistance(a, b) {
+  const rows = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i += 1) rows[i][0] = i;
+  for (let j = 0; j <= b.length; j += 1) rows[0][j] = j;
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      rows[i][j] = Math.min(
+        rows[i - 1][j] + 1,
+        rows[i][j - 1] + 1,
+        rows[i - 1][j - 1] + cost
+      );
+    }
+  }
+  return rows[a.length][b.length];
+}
+
+function getDetailScoreValue(detailScores, label) {
+  const match = (detailScores || []).find((item) => item.label === label);
+  const value = Number(match?.score);
+  if (!Number.isFinite(value)) return null;
+  return value > 1 ? value / 100 : value;
 }
 
 function renderLocalDataPanel(history = loadHistory()) {
@@ -2378,6 +2933,20 @@ function bindEvents() {
     });
   }
 
+  const wordDrillWordInput = document.querySelector("#wordDrillWordInput");
+  if (wordDrillWordInput) {
+    wordDrillWordInput.addEventListener("input", (event) => {
+      state.wordDrill.wordTranscript = event.target.value;
+    });
+  }
+
+  const wordDrillSentenceInput = document.querySelector("#wordDrillSentenceInput");
+  if (wordDrillSentenceInput) {
+    wordDrillSentenceInput.addEventListener("input", (event) => {
+      state.wordDrill.sentenceTranscript = event.target.value;
+    });
+  }
+
   const bankType = document.querySelector("#bankType");
   if (bankType) {
     bankType.addEventListener("change", (event) => {
@@ -2477,6 +3046,44 @@ function bindEvents() {
     button.addEventListener("click", () => startWordPronunciationReview(button.dataset.reviewWordPronunciation));
   });
 
+  document.querySelectorAll("[data-start-word-drill]").forEach((button) => {
+    button.addEventListener("click", () => startWordEchoDrill(button.dataset.startWordDrill));
+  });
+
+  document.querySelectorAll("[data-reset-word-drill]").forEach((button) => {
+    button.addEventListener("click", () => resetWordEchoDrill());
+  });
+
+  document.querySelectorAll("[data-word-drill-speak]").forEach((button) => {
+    button.addEventListener("click", () => speakWordDrillPart(button.dataset.wordDrillSpeak, button.dataset.wordDrillSlow === "true"));
+  });
+
+  document.querySelectorAll("[data-word-drill-record]").forEach((button) => {
+    button.addEventListener("click", () => toggleWordDrillRecording(button.dataset.wordDrillRecord));
+  });
+
+  document.querySelectorAll("[data-check-word-drill]").forEach((button) => {
+    button.addEventListener("click", () => analyzeWordDrillPart(button.dataset.checkWordDrill));
+  });
+
+  document.querySelectorAll("[data-start-mistake-review]").forEach((button) => {
+    button.addEventListener("click", () => startMistakeReview(button.dataset.startMistakeReview));
+  });
+
+  document.querySelectorAll("[data-mistake-review-action]").forEach((button) => {
+    button.addEventListener("click", () => finishMistakeReviewCard(button.dataset.mistakeReviewAction));
+  });
+
+  document.querySelectorAll("[data-mistake-review-star]").forEach((button) => {
+    button.addEventListener("click", () => toggleMistakeReviewStar());
+  });
+
+  document.querySelectorAll("[data-end-mistake-review]").forEach((button) => {
+    button.addEventListener("click", () => endMistakeReview());
+  });
+
+  bindMistakeReviewSwipe();
+
   document.querySelectorAll("[data-speak-word]").forEach((button) => {
     button.addEventListener("click", () => speakNotebookWord(button.dataset.speakWord, false));
   });
@@ -2493,6 +3100,27 @@ function bindEvents() {
 function bindClick(selector, handler) {
   document.querySelectorAll(selector).forEach((element) => {
     element.addEventListener("click", handler);
+  });
+}
+
+function bindMistakeReviewSwipe() {
+  const card = document.querySelector("[data-mistake-review-card]");
+  if (!card) return;
+  let startX = 0;
+  let startY = 0;
+  card.addEventListener("pointerdown", (event) => {
+    if (event.target.closest("button, textarea, input, audio")) return;
+    startX = event.clientX;
+    startY = event.clientY;
+  });
+  card.addEventListener("pointerup", (event) => {
+    if (!startX) return;
+    const deltaX = event.clientX - startX;
+    const deltaY = event.clientY - startY;
+    startX = 0;
+    startY = 0;
+    if (Math.abs(deltaX) < 90 || Math.abs(deltaX) < Math.abs(deltaY) * 1.4) return;
+    finishMistakeReviewCard(deltaX > 0 ? "pass" : "retry");
   });
 }
 
@@ -3474,11 +4102,53 @@ function reviewStarterHistory(item) {
   render();
 }
 
+function getCurrentRecordingTarget() {
+  if (state.recordingTarget === "coach") return "coach";
+  if (state.recordingTarget === "starter") return "starter";
+  if (state.recordingTarget === "wordDrill") return "wordDrill";
+  return "main";
+}
+
+function getWordDrillActiveTarget() {
+  return state.wordDrill.target === "sentence" ? "sentence" : "word";
+}
+
+function getWordDrillTranscript(target = getWordDrillActiveTarget()) {
+  return target === "sentence" ? state.wordDrill.sentenceTranscript : state.wordDrill.wordTranscript;
+}
+
+function setWordDrillTranscript(value, target = getWordDrillActiveTarget()) {
+  if (target === "sentence") state.wordDrill.sentenceTranscript = value;
+  else state.wordDrill.wordTranscript = value;
+}
+
+function clearWordDrillAttempt(target = getWordDrillActiveTarget()) {
+  if (target === "sentence") {
+    state.wordDrill.sentenceTranscript = "";
+    state.wordDrill.sentenceCheck = null;
+    state.wordDrill.sentenceDuration = 0;
+    state.wordDrill.sentenceAudioStats = null;
+    if (state.wordDrill.sentenceAudioUrl) URL.revokeObjectURL(state.wordDrill.sentenceAudioUrl);
+    state.wordDrill.sentenceAudioUrl = "";
+    state.wordDrill.sentenceAudioBlob = null;
+  } else {
+    state.wordDrill.wordTranscript = "";
+    state.wordDrill.wordCheck = null;
+    state.wordDrill.wordDuration = 0;
+    state.wordDrill.wordAudioStats = null;
+    if (state.wordDrill.wordAudioUrl) URL.revokeObjectURL(state.wordDrill.wordAudioUrl);
+    state.wordDrill.wordAudioUrl = "";
+    state.wordDrill.wordAudioBlob = null;
+  }
+}
+
 async function startRecording() {
   if (state.isRecording) return;
-  const target = state.recordingTarget === "coach" ? "coach" : state.recordingTarget === "starter" ? "starter" : "main";
+  const target = getCurrentRecordingTarget();
+  const drillTarget = target === "wordDrill" ? getWordDrillActiveTarget() : null;
   if (target === "coach") clearCoachRetakeWork();
   else if (target === "starter") clearStarterAttemptWork(false);
+  else if (target === "wordDrill") clearWordDrillAttempt(drillTarget);
   else {
     state.recordingTarget = "main";
     clearCurrentWork(false);
@@ -3504,6 +4174,16 @@ async function startRecording() {
           if (state.coach.retake.audioUrl) URL.revokeObjectURL(state.coach.retake.audioUrl);
           state.coach.retake.audioBlob = blob;
           state.coach.retake.audioUrl = URL.createObjectURL(blob);
+        } else if (target === "wordDrill") {
+          if (drillTarget === "sentence") {
+            if (state.wordDrill.sentenceAudioUrl) URL.revokeObjectURL(state.wordDrill.sentenceAudioUrl);
+            state.wordDrill.sentenceAudioBlob = blob;
+            state.wordDrill.sentenceAudioUrl = URL.createObjectURL(blob);
+          } else {
+            if (state.wordDrill.wordAudioUrl) URL.revokeObjectURL(state.wordDrill.wordAudioUrl);
+            state.wordDrill.wordAudioBlob = blob;
+            state.wordDrill.wordAudioUrl = URL.createObjectURL(blob);
+          }
         } else {
           if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
           state.audioBlob = blob;
@@ -3513,6 +4193,10 @@ async function startRecording() {
         render();
         const audioStats = await analyzeAudioBlob(blob, state.duration || state.elapsed);
         if (target === "coach") state.coach.retake.audioStats = audioStats;
+        else if (target === "wordDrill") {
+          if (drillTarget === "sentence") state.wordDrill.sentenceAudioStats = audioStats;
+          else state.wordDrill.wordAudioStats = audioStats;
+        }
         else state.audioStats = audioStats;
         state.audioAnalysisPending = false;
         if (target === "main" && state.transcript.trim() && !state.feedback) {
@@ -3521,6 +4205,10 @@ async function startRecording() {
         }
         if (target === "starter" && state.transcript.trim() && !state.starter.feedback) {
           analyzeStarterStep();
+          return;
+        }
+        if (target === "wordDrill" && getWordDrillTranscript(drillTarget).trim()) {
+          analyzeWordDrillPart(drillTarget);
           return;
         }
         render();
@@ -3537,11 +4225,18 @@ async function startRecording() {
 function stopRecording() {
   if (!state.isRecording) return;
 
-  const target = state.recordingTarget === "coach" ? "coach" : state.recordingTarget === "starter" ? "starter" : "main";
+  const target = getCurrentRecordingTarget();
+  const drillTarget = target === "wordDrill" ? getWordDrillActiveTarget() : null;
   state.isRecording = false;
   state.duration = state.elapsed;
   if (target === "coach") state.coach.retake.duration = state.elapsed;
-  const transcript = target === "coach" ? state.coach.retake.transcript : state.transcript;
+  if (target === "wordDrill" && drillTarget === "sentence") state.wordDrill.sentenceDuration = state.elapsed;
+  if (target === "wordDrill" && drillTarget === "word") state.wordDrill.wordDuration = state.elapsed;
+  const transcript = target === "coach"
+    ? state.coach.retake.transcript
+    : target === "wordDrill"
+      ? getWordDrillTranscript(drillTarget)
+      : state.transcript;
   state.status = cleanupSpacing(transcript) ? "录音完成，已生成转写" : "录音完成，请检查或手动输入转写";
   stopTimer();
 
@@ -3574,12 +4269,18 @@ function stopRecording() {
       if (!state.starter.feedback && !state.audioAnalysisPending) analyzeStarterStep();
     }, 900);
   }
+  if (target === "wordDrill" && getWordDrillTranscript(drillTarget).trim()) {
+    window.setTimeout(() => {
+      if (!state.audioAnalysisPending) analyzeWordDrillPart(drillTarget);
+    }, 600);
+  }
 }
 
 function startRecognition() {
   if (!SpeechRecognitionApi) return;
   try {
-    const target = state.recordingTarget === "coach" ? "coach" : state.recordingTarget === "starter" ? "starter" : "main";
+    const target = getCurrentRecordingTarget();
+    const drillTarget = target === "wordDrill" ? getWordDrillActiveTarget() : null;
     const recognition = new SpeechRecognitionApi();
     recognition.lang = "en-US";
     recognition.interimResults = true;
@@ -3605,6 +4306,10 @@ function startRecognition() {
         state.coach.retake.transcript = transcript;
         const input = document.querySelector("#coachTranscriptInput");
         if (input) input.value = state.coach.retake.transcript;
+      } else if (target === "wordDrill") {
+        setWordDrillTranscript(transcript, drillTarget);
+        const input = document.querySelector(drillTarget === "sentence" ? "#wordDrillSentenceInput" : "#wordDrillWordInput");
+        if (input) input.value = getWordDrillTranscript(drillTarget);
       } else {
         state.transcript = transcript;
         const input = document.querySelector(target === "starter" ? "#starterTranscriptInput" : "#transcriptInput");
@@ -3934,6 +4639,44 @@ function createCoachSessionState({ source, question, transcript, feedback, audio
       audioStats,
       historyId
     }
+  };
+}
+
+function getDefaultWordDrillState() {
+  return {
+    active: false,
+    key: "",
+    word: "",
+    sentence: "",
+    breakdown: [],
+    stressHint: "",
+    target: "word",
+    sourceCount: 0,
+    wordTranscript: "",
+    sentenceTranscript: "",
+    wordCheck: null,
+    sentenceCheck: null,
+    wordAudioUrl: "",
+    sentenceAudioUrl: "",
+    wordAudioBlob: null,
+    sentenceAudioBlob: null,
+    wordAudioStats: null,
+    sentenceAudioStats: null,
+    wordDuration: 0,
+    sentenceDuration: 0
+  };
+}
+
+function getDefaultMistakeReviewState() {
+  return {
+    active: false,
+    complete: false,
+    filter: "weakest",
+    deck: [],
+    index: 0,
+    results: [],
+    starredKeys: [],
+    startedAt: ""
   };
 }
 
@@ -4664,6 +5407,12 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function isWithinDays(value, days) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return Date.now() - date.getTime() <= days * 24 * 60 * 60 * 1000;
 }
 
 function isToday(value) {

@@ -964,6 +964,224 @@ textarea {
   align-items: stretch;
 }
 
+.mistake-review-entry,
+.mistake-review-deck {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.mistake-review-entry {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border-left: 4px solid var(--blue);
+}
+
+.mistake-review-entry h3,
+.mistake-review-deck h3 {
+  margin: 8px 0 4px;
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+.deck-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.deck-progress {
+  display: grid;
+  gap: 4px;
+  min-width: 104px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: #eff6ff;
+  color: #1d4ed8;
+  text-align: right;
+}
+
+.deck-progress strong {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.deck-progress span {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.deck-card-shell {
+  display: grid;
+  gap: 10px;
+  touch-action: pan-y;
+}
+
+.deck-card-meta,
+.deck-weak-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.deck-card-meta span,
+.deck-weak-list span {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.deck-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.deck-action-bar .tool-button.active {
+  border-color: rgba(217, 119, 6, 0.35);
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.mistake-review-deck.summary {
+  border-left: 4px solid var(--teal);
+}
+
+.word-drill-capsule {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-left: 4px solid var(--blue);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.92), rgba(255, 255, 255, 0.96));
+}
+
+.word-drill-capsule h3 {
+  margin: 8px 0 4px;
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+.word-drill-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.word-drill-step {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+}
+
+.word-drill-step.result-pass {
+  border-color: rgba(22, 163, 74, 0.32);
+}
+
+.word-drill-step.result-almost {
+  border-color: rgba(217, 119, 6, 0.34);
+}
+
+.word-drill-step.result-retry {
+  border-color: rgba(220, 38, 38, 0.28);
+}
+
+.word-drill-step-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.word-drill-step-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.word-drill-step-head strong {
+  font-size: 14px;
+}
+
+.word-drill-target {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+  text-align: center;
+}
+
+.word-drill-target b {
+  font-size: 30px;
+  letter-spacing: 0;
+}
+
+.word-drill-target small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.sentence-target {
+  min-height: 104px;
+}
+
+.word-drill-feedback {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.word-drill-feedback strong {
+  color: var(--ink);
+}
+
+.word-drill-feedback p {
+  margin: 0;
+}
+
+.word-drill-feedback span {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.word-drill-feedback.result-pass {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.word-drill-feedback.result-almost {
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.word-drill-feedback.result-retry {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.word-drill-feedback.muted {
+  color: var(--muted);
+}
+
 .empty-feedback {
   display: grid;
   place-items: center;
@@ -1892,6 +2110,21 @@ textarea {
   }
 
   .mistake-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mistake-review-entry,
+  .deck-topline {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .deck-progress {
+    width: 100%;
+    text-align: left;
+  }
+
+  .word-drill-grid {
     grid-template-columns: 1fr;
   }
 }
