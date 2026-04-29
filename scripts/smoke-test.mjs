@@ -187,6 +187,8 @@ context.localStorage.setItem(api.STORAGE_KEY, JSON.stringify([
       { type: "match", ref: "the", hyp: "the" },
       { type: "substitute", ref: "library", hyp: "liberty" },
       { type: "missing", ref: "extend", hyp: "" },
+      { type: "substitute", ref: "presentation", hyp: "talk" },
+      { type: "substitute", ref: "campus", hyp: "banana" },
       { type: "match", ref: "hours", hyp: "hours" }
     ],
     pronunciation: {
@@ -208,6 +210,10 @@ assert(notebook[0].words.some((item) => item.word === "library"), "pronunciation
 const wordNotebook = api.buildWordPronunciationNotebook();
 assert(wordNotebook.some((item) => item.word === "library" && item.heardAs.some((heard) => heard.word === "liberty")), "word notebook missed repeat substitutions");
 assert(wordNotebook.some((item) => item.word === "environment" && item.hasExternal), "word notebook missed external word scores");
+assert(wordNotebook.find((item) => item.word === "library")?.category === "pronunciationLikely", "library/liberty should be a pronunciation-likely substitution");
+assert(wordNotebook.find((item) => item.word === "extend")?.category === "recallLikely", "missing words should be recall-likely");
+assert(wordNotebook.find((item) => item.word === "presentation")?.category === "semanticSubstitution", "known semantic substitutions should be separated");
+assert(wordNotebook.find((item) => item.word === "campus")?.category === "recallLikely", "unrelated substitutions should not be pronunciation errors");
 assert(JSON.stringify(api.splitWordForPractice("stores")) === JSON.stringify(["store", "z"]), "stores should be split as store + z");
 assert(api.getWordStressHint("stores").includes("/z/"), "stores hint should mention final z sound");
 const splitCases = new Map([

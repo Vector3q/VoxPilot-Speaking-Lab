@@ -37,6 +37,7 @@ const state = {
   bankType: "all",
   bankDifficulty: "all",
   mistakeBookMode: "sounds",
+  wordMistakeFilter: "all",
   toast: "",
   full: {
     active: false,
@@ -1265,13 +1266,15 @@ function renderHistoryView() {
 function renderMistakeBookView() {
   const history = loadHistory();
   const soundNotebook = buildPronunciationNotebook(history);
-  const wordNotebook = buildWordPronunciationNotebook(history);
+  const rawWordNotebook = buildWordPronunciationNotebook(history);
+  const wordNotebook = filterWordNotebook(rawWordNotebook, state.wordMistakeFilter);
   const activeMode = state.mistakeBookMode === "words" ? "words" : "sounds";
   const isWordMode = activeMode === "words";
   const activeNotebook = isWordMode ? wordNotebook : soundNotebook;
   const totalWords = soundNotebook.reduce((sum, item) => sum + item.words.length, 0);
-  const totalWordHits = wordNotebook.reduce((sum, item) => sum + item.count, 0);
+  const totalWordHits = rawWordNotebook.reduce((sum, item) => sum + item.count, 0);
   const activeSourceCount = countNotebookSources(activeNotebook);
+  const categoryCounts = getWordNotebookCategoryCounts(rawWordNotebook);
   return `
     <section class="mistake-book">
       <div class="history-top">
@@ -1290,19 +1293,21 @@ function renderMistakeBookView() {
         <button class="${activeMode === "words" ? "active" : ""}" data-mistake-book-mode="words">单词错题</button>
       </div>
 
+      ${isWordMode ? renderWordMistakeFilter(categoryCounts) : ""}
+
       <section class="feedback-section wide-section notebook-summary">
         <div class="summary-grid">
           <div class="summary-tile"><span>高频音素</span><strong>${soundNotebook.length}</strong></div>
-          <div class="summary-tile"><span>单词错题</span><strong>${wordNotebook.length}</strong></div>
+          <div class="summary-tile"><span>单词错题</span><strong>${rawWordNotebook.length}</strong></div>
           <div class="summary-tile"><span>${isWordMode ? "错词次数" : "关联单词"}</span><strong>${isWordMode ? totalWordHits : totalWords}</strong></div>
           <div class="summary-tile"><span>来源记录</span><strong>${activeSourceCount}</strong></div>
         </div>
         <p class="compact-copy">${isWordMode
-          ? "单词错题优先来自 Repeat 里的漏词/替换词，以及外部发音 API 的低分单词；音素弱项里的关联词会作为辅助线索。"
+          ? "单词错题现在会区分疑似发音、疑似漏词、语义替换和不确定；系统只根据行为证据推断，不会把漏词直接说成发音错误。"
           : "音素错题展示系统推断的疑似训练点；如果你接了 Azure 或自定义发音 API，外部返回的 phoneme score 也会被放进这里。"}</p>
       </section>
 
-      ${isWordMode ? renderMistakeReviewEntry(wordNotebook) : ""}
+      ${isWordMode ? renderMistakeReviewEntry(rawWordNotebook) : ""}
 
       ${isWordMode && state.mistakeReview.active ? renderMistakeReviewDeck() : ""}
 
@@ -1328,16 +1333,24 @@ function renderMistakeBookView() {
 function renderMistakeReviewEntry(wordNotebook) {
   const highFrequencyCount = wordNotebook.filter((item) => item.count >= 2).length;
   const recentCount = wordNotebook.filter((item) => isWithinDays(item.lastSeen, 7)).length;
+  const pronunciationCount = wordNotebook.filter((item) => item.category === "pronunciationLikely").length;
+  const recallCount = wordNotebook.filter((item) => item.category === "recallLikely").length;
   return `
     <section class="mistake-review-entry">
       <div>
         <span class="badge blue">Mistake Deck</span>
         <h3>刷错词</h3>
-        <p class="compact-copy">一次只练一个词：先复述单词，再复述句子。练完划过，没稳的词会回到队尾。</p>
+        <p class="compact-copy">一次只练一个词：发音错词练词句复述，漏词回忆先帮助你想起目标词。练完划过，没稳的词会回到队尾。</p>
       </div>
       <div class="control-actions">
         <button class="primary-button" data-start-mistake-review="weakest" ${wordNotebook.length ? "" : "disabled"}>
           <span class="button-icon">▶</span>开始刷错词
+        </button>
+        <button class="ghost-button" data-start-mistake-review="pronunciation" ${pronunciationCount ? "" : "disabled"}>
+          <span class="button-icon">◉</span>发音 ${pronunciationCount}
+        </button>
+        <button class="ghost-button" data-start-mistake-review="recall" ${recallCount ? "" : "disabled"}>
+          <span class="button-icon">□</span>漏词 ${recallCount}
         </button>
         <button class="ghost-button" data-start-mistake-review="frequent" ${highFrequencyCount ? "" : "disabled"}>
           <span class="button-icon">↺</span>高频 ${highFrequencyCount}
@@ -1347,6 +1360,25 @@ function renderMistakeReviewEntry(wordNotebook) {
         </button>
       </div>
     </section>
+  `;
+}
+
+function renderWordMistakeFilter(categoryCounts) {
+  const filters = [
+    ["all", "全部", categoryCounts.all],
+    ["pronunciationLikely", "疑似发音", categoryCounts.pronunciationLikely],
+    ["recallLikely", "疑似漏词", categoryCounts.recallLikely],
+    ["semanticSubstitution", "语义替换", categoryCounts.semanticSubstitution],
+    ["uncertain", "不确定", categoryCounts.uncertain]
+  ];
+  return `
+    <div class="segmented word-mistake-filter" role="group" aria-label="Word mistake filter">
+      ${filters.map(([id, label, count]) => `
+        <button class="${state.wordMistakeFilter === id ? "active" : ""}" data-word-mistake-filter="${id}" ${count ? "" : "disabled"}>
+          ${label} ${count || 0}
+        </button>
+      `).join("")}
+    </div>
   `;
 }
 
@@ -1386,14 +1418,19 @@ function renderWordPronunciationNotebookCard(item) {
   const reasonBadges = item.reasons.map((reason) => `<span>${escapeHtml(getWordMistakeReasonLabel(reason))}</span>`).join("");
   const heardAs = item.heardAs.slice(0, 4);
   const scoreLabel = Number.isFinite(item.lowestScore) ? `${Math.round(item.lowestScore * 100)}%` : "";
+  const category = getWordMistakeCategoryMeta(item.category);
   return `
     <article class="mistake-card word-mistake-card">
       <div class="mistake-card-head">
         <div>
-          <span class="badge ${item.hasExternal ? "blue" : ""}">${item.hasExternal ? "含逐词评分" : "Basic 错词"}</span>
+          <span class="badge ${category.badgeClass}">${category.label}</span>
           <h3>${escapeHtml(item.word)}</h3>
         </div>
         <strong>${item.count}x</strong>
+      </div>
+      <div class="word-diagnosis ${escapeHtml(item.category)}">
+        <strong>${escapeHtml(category.title)}${Number.isFinite(item.categoryConfidence) ? ` · ${Math.round(item.categoryConfidence * 100)}%` : ""}</strong>
+        <p>${escapeHtml(category.tip)}</p>
       </div>
       <div class="word-breakdown">
         <span>拆读辅助</span>
@@ -1405,6 +1442,7 @@ function renderWordPronunciationNotebookCard(item) {
       <div class="word-mistake-tags">
         ${reasonBadges}
         ${scoreLabel ? `<span>最低逐词分 ${scoreLabel}</span>` : ""}
+        ${item.evidence.slice(0, 3).map((evidence) => `<span>${escapeHtml(getWordMistakeEvidenceLabel(evidence))}</span>`).join("")}
         ${item.phonemeSounds.map((sound) => `<span>${escapeHtml(sound)}</span>`).join("")}
       </div>
       ${
@@ -1549,6 +1587,7 @@ function renderMistakeReviewDeck() {
 
       <div class="deck-card-shell" data-mistake-review-card="true">
         <div class="deck-card-meta">
+          <span>${escapeHtml(getWordMistakeCategoryMeta(current.category).label)}</span>
           <span>错误 ${current.count}x</span>
           ${current.heardAs?.length ? `<span>常被听成 ${escapeHtml(current.heardAs[0].word)}</span>` : ""}
           ${Number.isFinite(current.lowestScore) ? `<span>最低逐词分 ${Math.round(current.lowestScore * 100)}%</span>` : ""}
@@ -1681,6 +1720,8 @@ function buildWordPronunciationNotebook(history = loadHistory()) {
           reasons: new Set(),
           heardAsCounts: new Map(),
           phonemeSounds: new Set(),
+          categoryScores: new Map(),
+          evidenceCounts: new Map(),
           sources: [],
           hasExternal: false,
           lowestScore: null,
@@ -1698,6 +1739,13 @@ function buildWordPronunciationNotebook(history = loadHistory()) {
         bucket.heardAsCounts.set(normalized.heardAs, (bucket.heardAsCounts.get(normalized.heardAs) || 0) + 1);
       }
       if (normalized.sound) bucket.phonemeSounds.add(normalized.sound);
+      bucket.categoryScores.set(
+        normalized.category,
+        (bucket.categoryScores.get(normalized.category) || 0) + normalized.confidence
+      );
+      normalized.evidence.forEach((item) => {
+        bucket.evidenceCounts.set(item, (bucket.evidenceCounts.get(item) || 0) + 1);
+      });
       if (Number.isFinite(normalized.score)) {
         bucket.lowestScore = bucket.lowestScore === null ? normalized.score : Math.min(bucket.lowestScore, normalized.score);
       }
@@ -1715,18 +1763,27 @@ function buildWordPronunciationNotebook(history = loadHistory()) {
   });
 
   return [...buckets.values()]
-    .map((item) => ({
-      ...item,
-      reasons: [...item.reasons],
-      heardAs: [...item.heardAsCounts.entries()]
-        .map(([word, count]) => ({ word, count }))
-        .sort((a, b) => b.count - a.count || a.word.localeCompare(b.word)),
-      phonemeSounds: [...item.phonemeSounds].slice(0, 4),
-      sources: item.sources.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-      breakdown: splitWordForPractice(item.word),
-      stressHint: getWordStressHint(item.word),
-      practiceLine: buildWordReviewSentence(item.word)
-    }))
+    .map((item) => {
+      const category = getDominantWordMistakeCategory(item.categoryScores);
+      const categoryTotal = [...item.categoryScores.values()].reduce((sum, value) => sum + value, 0) || 1;
+      return {
+        ...item,
+        category,
+        categoryConfidence: Math.min(0.95, Math.max(0.35, (item.categoryScores.get(category) || 0) / categoryTotal)),
+        reasons: [...item.reasons],
+        evidence: [...item.evidenceCounts.entries()]
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .map(([evidence]) => evidence),
+        heardAs: [...item.heardAsCounts.entries()]
+          .map(([word, count]) => ({ word, count }))
+          .sort((a, b) => b.count - a.count || a.word.localeCompare(b.word)),
+        phonemeSounds: [...item.phonemeSounds].slice(0, 4),
+        sources: item.sources.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+        breakdown: splitWordForPractice(item.word),
+        stressHint: getWordStressHint(item.word),
+        practiceLine: buildWordReviewSentence(item.word)
+      };
+    })
     .sort((a, b) => {
       const scoreA = Number.isFinite(a.lowestScore) ? a.lowestScore : 1;
       const scoreB = Number.isFinite(b.lowestScore) ? b.lowestScore : 1;
@@ -1743,7 +1800,8 @@ function collectWordMistakeCandidates(entry) {
         candidates.push({
           word: item.ref,
           heardAs: item.hyp,
-          reason: "repeat-mismatch",
+          reason: item.type === "missing" ? "repeat-missing" : "repeat-substitute",
+          alignmentType: item.type,
           hasExternal: false
         });
       }
@@ -1788,6 +1846,7 @@ function normalizeWordMistakeCandidate(candidate) {
   if (!isUsefulNotebookWord(word)) return null;
   const heardAs = normalizeNotebookWord(candidate.heardAs);
   const score = normalizeNotebookScore(candidate.score);
+  const classification = classifyWordMistakeCandidate({ ...candidate, word, heardAs, score });
   return {
     key: word,
     word,
@@ -1795,8 +1854,212 @@ function normalizeWordMistakeCandidate(candidate) {
     reason: candidate.reason || "repeat-mismatch",
     sound: cleanupSpacing(candidate.sound || ""),
     score,
-    hasExternal: Boolean(candidate.hasExternal || candidate.reason === "low-word-score")
+    hasExternal: Boolean(candidate.hasExternal || candidate.reason === "low-word-score"),
+    category: classification.category,
+    confidence: classification.confidence,
+    evidence: classification.evidence
   };
+}
+
+function classifyWordMistakeCandidate(candidate) {
+  const word = candidate.word;
+  const heardAs = candidate.heardAs;
+  const evidence = [];
+
+  if (candidate.reason === "low-word-score" && Number.isFinite(candidate.score)) {
+    evidence.push("external_low_word_score");
+    return {
+      category: "pronunciationLikely",
+      confidence: candidate.score < 0.65 ? 0.92 : 0.84,
+      evidence
+    };
+  }
+
+  if (candidate.reason === "phoneme-focus") {
+    evidence.push("phoneme_focus");
+    return {
+      category: "pronunciationLikely",
+      confidence: candidate.hasExternal ? 0.76 : 0.58,
+      evidence
+    };
+  }
+
+  if (candidate.alignmentType === "missing") {
+    evidence.push("repeat_missing");
+    return {
+      category: "recallLikely",
+      confidence: 0.82,
+      evidence
+    };
+  }
+
+  if (candidate.alignmentType === "substitute") {
+    evidence.push("repeat_substitute");
+    if (isKnownSemanticSubstitution(word, heardAs)) {
+      evidence.push("known_semantic_substitution");
+      return {
+        category: "semanticSubstitution",
+        confidence: 0.8,
+        evidence
+      };
+    }
+
+    const spelling = getWordSimilarity(word, heardAs);
+    const phonetic = getPhoneticSimilarity(word, heardAs);
+    const confusion = getCommonLearnerConfusionScore(word, heardAs);
+    const shape = getSyllableShapeSimilarity(word, heardAs);
+    const soundScore = spelling * 0.18 + phonetic * 0.42 + confusion * 0.28 + shape * 0.12;
+    if (spelling >= 0.58) evidence.push("spelling_shape_close");
+    if (phonetic >= 0.62) evidence.push("phonetic_key_close");
+    if (confusion >= 0.7) evidence.push("common_learner_confusion");
+    if (shape >= 0.72) evidence.push("similar_syllable_shape");
+
+    if (soundScore >= 0.64) {
+      return {
+        category: "pronunciationLikely",
+        confidence: Math.min(0.9, soundScore),
+        evidence
+      };
+    }
+    if (soundScore >= 0.46) {
+      return {
+        category: "uncertain",
+        confidence: soundScore,
+        evidence
+      };
+    }
+    evidence.push("substitution_not_sound_similar");
+    return {
+      category: "recallLikely",
+      confidence: 0.64,
+      evidence
+    };
+  }
+
+  evidence.push("insufficient_signal");
+  return {
+    category: "uncertain",
+    confidence: 0.4,
+    evidence
+  };
+}
+
+function getDominantWordMistakeCategory(categoryScores) {
+  const entries = [...categoryScores.entries()];
+  if (!entries.length) return "uncertain";
+  return entries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+}
+
+function filterWordNotebook(items, filter) {
+  if (!filter || filter === "all") return items;
+  return items.filter((item) => item.category === filter);
+}
+
+function getWordNotebookCategoryCounts(items) {
+  return items.reduce(
+    (acc, item) => {
+      acc.all += 1;
+      acc[item.category] = (acc[item.category] || 0) + 1;
+      return acc;
+    },
+    { all: 0, pronunciationLikely: 0, recallLikely: 0, semanticSubstitution: 0, uncertain: 0 }
+  );
+}
+
+function getPhoneticSimilarity(a, b) {
+  const keyA = getSimplePhoneticKey(a);
+  const keyB = getSimplePhoneticKey(b);
+  if (!keyA || !keyB) return 0;
+  return getWordSimilarity(keyA, keyB);
+}
+
+function getSimplePhoneticKey(value) {
+  let word = normalizeNotebookWord(value);
+  if (!word) return "";
+  word = word
+    .replace(/^kn/, "n")
+    .replace(/^wr/, "r")
+    .replace(/^wh/, "w")
+    .replace(/mb$/, "m")
+    .replace(/tion|sion|cian/g, "shun")
+    .replace(/ture/g, "cher")
+    .replace(/ph/g, "f")
+    .replace(/ght/g, "t")
+    .replace(/ck/g, "k")
+    .replace(/qu/g, "kw")
+    .replace(/x/g, "ks")
+    .replace(/c(?=[eiy])/g, "s")
+    .replace(/c/g, "k")
+    .replace(/j/g, "g")
+    .replace(/z/g, "s")
+    .replace(/v/g, "w")
+    .replace(/[aeiouy]+/g, "A")
+    .replace(/(.)\1+/g, "$1");
+  return word;
+}
+
+function getCommonLearnerConfusionScore(a, b) {
+  const left = getLearnerConfusionKey(a);
+  const right = getLearnerConfusionKey(b);
+  if (!left || !right) return 0;
+  const score = getWordSimilarity(left, right);
+  return score >= 0.72 ? 1 : score >= 0.58 ? 0.65 : 0;
+}
+
+function getLearnerConfusionKey(value) {
+  return normalizeNotebookWord(value)
+    .replace(/th/g, "T")
+    .replace(/[rl]/g, "R")
+    .replace(/[vw]/g, "V")
+    .replace(/[td]/g, "D")
+    .replace(/[pb]/g, "B")
+    .replace(/[sz]/g, "S")
+    .replace(/[kgqc]/g, "K")
+    .replace(/[aeiouy]+/g, "A")
+    .replace(/(.)\1+/g, "$1");
+}
+
+function getSyllableShapeSimilarity(a, b) {
+  const left = getWordShape(a);
+  const right = getWordShape(b);
+  if (!left.syllables || !right.syllables) return 0;
+  const syllableScore = 1 - Math.abs(left.syllables - right.syllables) / Math.max(left.syllables, right.syllables);
+  const lengthScore = 1 - Math.abs(left.length - right.length) / Math.max(left.length, right.length);
+  const endingScore = left.ending && left.ending === right.ending ? 1 : 0;
+  return Math.max(0, Math.min(1, syllableScore * 0.45 + lengthScore * 0.35 + endingScore * 0.2));
+}
+
+function getWordShape(value) {
+  const word = normalizeNotebookWord(value);
+  const vowelGroups = word.match(/[aeiouy]+/g) || [];
+  return {
+    length: word.length || 1,
+    syllables: Math.max(1, vowelGroups.length),
+    ending: getWordEndingShape(word)
+  };
+}
+
+function getWordEndingShape(word) {
+  if (/(tion|sion|cian)$/.test(word)) return "shun";
+  if (/ing$/.test(word)) return "ing";
+  if (/ed$/.test(word)) return "ed";
+  if (/s$/.test(word)) return "s";
+  return word.slice(-2);
+}
+
+function isKnownSemanticSubstitution(ref, hyp) {
+  const groups = [
+    ["presentation", "talk", "speech"],
+    ["professor", "teacher", "instructor"],
+    ["dormitory", "dorm", "residence"],
+    ["cafeteria", "dining", "canteen"],
+    ["assignment", "homework", "task"],
+    ["classmate", "friend", "partner"],
+    ["university", "college", "school"],
+    ["information", "data", "details"],
+    ["explanation", "reason", "answer"]
+  ];
+  return groups.some((group) => group.includes(ref) && group.includes(hyp));
 }
 
 function normalizeNotebookWord(value) {
@@ -1976,10 +2239,59 @@ function buildWordReviewSentence(word) {
 function getWordMistakeReasonLabel(reason) {
   const labels = {
     "repeat-mismatch": "Repeat 错词",
+    "repeat-substitute": "Repeat 替换",
+    "repeat-missing": "Repeat 漏词",
     "low-word-score": "逐词低分",
     "phoneme-focus": "关联音素"
   };
   return labels[reason] || reason;
+}
+
+function getWordMistakeCategoryMeta(category) {
+  const map = {
+    pronunciationLikely: {
+      label: "疑似发音",
+      title: "更像发音/识别混淆",
+      tip: "系统看到你在目标词位置说出了相近词，或外部逐词发音分偏低。适合先练单词发音，再放进句子。",
+      badgeClass: "blue"
+    },
+    recallLikely: {
+      label: "疑似漏词",
+      title: "更像没想起或漏说",
+      tip: "系统没有看到你尝试说出这个词，或替代词和目标词声音差距较大。适合先做提示回忆，再完整复述。",
+      badgeClass: ""
+    },
+    semanticSubstitution: {
+      label: "语义替换",
+      title: "可能是换了同义/近义表达",
+      tip: "自由回答里这不一定是错；但在 Repeat 任务里，它说明原句词没有被完整复述。",
+      badgeClass: "green"
+    },
+    uncertain: {
+      label: "不确定",
+      title: "证据不足，先保守处理",
+      tip: "系统还不能确定是发音、漏词还是替换。建议先听词，再做一次词句复述。",
+      badgeClass: ""
+    }
+  };
+  return map[category] || map.uncertain;
+}
+
+function getWordMistakeEvidenceLabel(evidence) {
+  const labels = {
+    external_low_word_score: "外部低分",
+    phoneme_focus: "音素线索",
+    repeat_missing: "完全漏掉",
+    repeat_substitute: "说成别词",
+    known_semantic_substitution: "近义替换",
+    spelling_shape_close: "拼写轮廓近",
+    phonetic_key_close: "音近",
+    common_learner_confusion: "常见混淆",
+    similar_syllable_shape: "节奏相近",
+    substitution_not_sound_similar: "不像音近",
+    insufficient_signal: "证据不足"
+  };
+  return labels[evidence] || evidence;
 }
 
 function countNotebookSources(notebook) {
@@ -2150,6 +2462,10 @@ function startMistakeReview(filter = "weakest") {
 
 function buildMistakeReviewDeck(filter = "weakest") {
   let items = buildWordPronunciationNotebook();
+  if (filter === "pronunciation") items = items.filter((item) => item.category === "pronunciationLikely");
+  if (filter === "recall") items = items.filter((item) => item.category === "recallLikely");
+  if (filter === "semantic") items = items.filter((item) => item.category === "semanticSubstitution");
+  if (filter === "uncertain") items = items.filter((item) => item.category === "uncertain");
   if (filter === "frequent") items = items.filter((item) => item.count >= 2);
   if (filter === "recent") items = items.filter((item) => isWithinDays(item.lastSeen, 7));
   if (filter === "retry" && state.mistakeReview.results.length) {
@@ -2170,7 +2486,9 @@ function getMistakeReviewPriority(item) {
   const scorePenalty = Number.isFinite(item.lowestScore) ? 1 - item.lowestScore : 0;
   const recentBoost = isWithinDays(item.lastSeen, 7) ? 1.2 : 0;
   const externalBoost = item.hasExternal ? 0.8 : 0;
-  return item.count * 1.7 + item.heardAs.length * 0.7 + item.reasons.length * 0.35 + scorePenalty * 2 + recentBoost + externalBoost;
+  const recallBoost = item.category === "recallLikely" ? 0.5 : 0;
+  const pronunciationBoost = item.category === "pronunciationLikely" ? 0.4 : 0;
+  return item.count * 1.7 + item.heardAs.length * 0.7 + item.reasons.length * 0.35 + scorePenalty * 2 + recentBoost + externalBoost + recallBoost + pronunciationBoost;
 }
 
 function loadMistakeReviewCard(index) {
@@ -2261,6 +2579,10 @@ function getMistakeReviewFilterLabel(filter) {
     weakest: "优先级队列",
     frequent: "高频错词",
     recent: "最近 7 天",
+    pronunciation: "疑似发音",
+    recall: "疑似漏词",
+    semantic: "语义替换",
+    uncertain: "不确定",
     retry: "未掌握复刷"
   };
   return labels[filter] || "错词队列";
@@ -3105,6 +3427,14 @@ function bindEvents() {
   document.querySelectorAll("[data-mistake-book-mode]").forEach((button) => {
     button.addEventListener("click", () => {
       state.mistakeBookMode = button.dataset.mistakeBookMode;
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-word-mistake-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.wordMistakeFilter = button.dataset.wordMistakeFilter;
+      state.mistakeReview = getDefaultMistakeReviewState();
       render();
     });
   });

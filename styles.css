@@ -371,6 +371,11 @@ textarea {
   color: #6d28d9;
 }
 
+.badge.green {
+  background: #dcfce7;
+  color: #15803d;
+}
+
 .question-text {
   margin: 0;
   max-width: 880px;
@@ -789,6 +794,10 @@ textarea {
   max-width: 420px;
 }
 
+.word-mistake-filter {
+  max-width: 760px;
+}
+
 .mistake-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -850,6 +859,41 @@ textarea {
 .word-mistake-card .mistake-card-head h3 {
   font-size: 24px;
   line-height: 1.15;
+}
+
+.word-diagnosis {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+  border-left: 4px solid #94a3b8;
+}
+
+.word-diagnosis strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.word-diagnosis p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.word-diagnosis.pronunciationLikely {
+  background: #eff6ff;
+  border-left-color: #2563eb;
+}
+
+.word-diagnosis.recallLikely {
+  background: #fff7ed;
+  border-left-color: #d97706;
+}
+
+.word-diagnosis.semanticSubstitution {
+  background: #f0fdf4;
+  border-left-color: #16a34a;
 }
 
 .word-breakdown {
