@@ -210,6 +210,23 @@ assert(wordNotebook.some((item) => item.word === "library" && item.heardAs.some(
 assert(wordNotebook.some((item) => item.word === "environment" && item.hasExternal), "word notebook missed external word scores");
 assert(JSON.stringify(api.splitWordForPractice("stores")) === JSON.stringify(["store", "z"]), "stores should be split as store + z");
 assert(api.getWordStressHint("stores").includes("/z/"), "stores hint should mention final z sound");
+const splitCases = new Map([
+  ["assignment", ["a", "SIGN", "ment"]],
+  ["comfortable", ["COMF", "ter", "ble"]],
+  ["places", ["place", "iz"]],
+  ["classes", ["class", "iz"]],
+  ["changes", ["change", "iz"]],
+  ["studies", ["study", "z"]],
+  ["helps", ["help", "s"]],
+  ["projects", ["project", "s"]],
+  ["asked", ["ask", "t"]],
+  ["changed", ["change", "d"]],
+  ["practiced", ["practice", "t"]],
+  ["stopped", ["stop", "t"]]
+]);
+splitCases.forEach((expected, word) => {
+  assert(JSON.stringify(api.splitWordForPractice(word)) === JSON.stringify(expected), `${word} split was not ${expected.join(" / ")}`);
+});
 api.startWordEchoDrill("library");
 assert(api.state.wordDrill.active === true, "word drill did not start");
 api.state.wordDrill.wordTranscript = "library";

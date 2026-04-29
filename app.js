@@ -1825,29 +1825,37 @@ function isUsefulNotebookWord(word) {
 function splitWordForPractice(word) {
   const overrides = {
     academic: ["a", "ca", "DE", "mic"],
-    assignment: ["a", "SSIGN", "ment"],
-    available: ["a", "VAI", "la", "ble"],
+    assignment: ["a", "SIGN", "ment"],
+    available: ["a", "VAIL", "a", "ble"],
     because: ["be", "CAUSE"],
     classmate: ["CLASS", "mate"],
-    comfortable: ["COMF", "ta", "ble"],
-    communication: ["co", "mmu", "ni", "CA", "tion"],
+    comfortable: ["COMF", "ter", "ble"],
+    communication: ["com", "mu", "ni", "CA", "tion"],
     convenient: ["con", "VE", "nient"],
+    decided: ["de", "CI", "ded"],
     development: ["de", "VE", "lop", "ment"],
-    different: ["DI", "ffe", "rent"],
+    different: ["DIFF", "er", "ent"],
     education: ["e", "du", "CA", "tion"],
     environment: ["en", "VI", "ron", "ment"],
+    environmental: ["en", "vi", "ron", "MEN", "tal"],
     experience: ["ex", "PE", "ri", "ence"],
+    explained: ["ex", "PLAIN", "d"],
     important: ["im", "POR", "tant"],
     information: ["in", "for", "MA", "tion"],
     interesting: ["IN", "ter", "est", "ing"],
     library: ["LI", "bra", "ry"],
-    opportunity: ["o", "ppor", "TU", "ni", "ty"],
+    opportunity: ["op", "por", "TU", "ni", "ty"],
+    prepared: ["pre", "PARE", "d"],
     presentation: ["pre", "sen", "TA", "tion"],
     professor: ["pro", "FE", "ssor"],
+    project: ["PROJ", "ect"],
     responsibility: ["re", "spon", "si", "BI", "li", "ty"],
     store: ["store"],
     stores: ["store", "z"],
+    student: ["STU", "dent"],
+    students: ["STU", "dent", "s"],
     technology: ["tech", "NO", "lo", "gy"],
+    updated: ["up", "DATE", "id"],
     university: ["u", "ni", "VER", "si", "ty"]
   };
   const clean = normalizeNotebookWord(word);
@@ -1874,32 +1882,61 @@ function splitWordForPractice(word) {
 
 function splitCommonFinalSuffix(clean) {
   if (!clean || clean.length < 5) return null;
-  const voicedFinals = /[bdgvðlmnŋrwy]$/;
-  const voicelessFinals = /[ptkfsθ]$/;
-  if (/[^s]es$/.test(clean)) {
-    const base = clean.slice(0, -2);
-    if (/(s|x|z|ch|sh)$/.test(base)) return [base, "iz"];
-    if (base.endsWith("e")) return [base, voicedFinals.test(base.slice(-2, -1)) ? "z" : "s"];
-  }
+  if (/(us|ss|is|ous)$/.test(clean)) return null;
+  if (/ies$/.test(clean)) return [`${clean.slice(0, -3)}y`, "z"];
+  if (/(ches|shes|sses|xes|zes)$/.test(clean)) return [clean.slice(0, -2), "iz"];
+  if (/(ces|ges|ses)$/.test(clean)) return [clean.slice(0, -1), "iz"];
+  if (/oes$/.test(clean)) return [clean.slice(0, -2), "z"];
   if (/[^s]s$/.test(clean)) {
     const base = clean.slice(0, -1);
-    if (base.endsWith("e")) return [base, voicedFinals.test(base.slice(-2, -1)) ? "z" : "s"];
-    if (voicelessFinals.test(base)) return [base, "s"];
-    return [base, "z"];
+    return [base, getPluralSPronunciation(base)];
   }
+  if (/ied$/.test(clean)) return [`${clean.slice(0, -3)}y`, "d"];
   if (/ed$/.test(clean)) {
-    const base = clean.slice(0, -2);
-    if (/[td]$/.test(base)) return [base, "id"];
-    if (voicelessFinals.test(base)) return [base, "t"];
-    return [base, "d"];
+    const base = normalizePastEdBase(clean);
+    return [base, getPastEdPronunciation(base)];
   }
   return null;
+}
+
+function getPronouncedFinalLetter(base) {
+  if (!base) return "";
+  if (base.endsWith("e") && base.length > 1) return base.slice(-2, -1);
+  return base.slice(-1);
+}
+
+function getPluralSPronunciation(base) {
+  const final = getPronouncedFinalLetter(base);
+  if (/[ptkfc]$/.test(final) || /(ch|sh|th)$/.test(base)) return "s";
+  return "z";
+}
+
+function normalizePastEdBase(clean) {
+  let base = clean.slice(0, -2);
+  if (/(ced|ged|sed|zed)$/.test(clean)) base = clean.slice(0, -1);
+  if (/([b-df-hj-np-tv-z])\1$/.test(base) && !/(ss|ll|zz)$/.test(base)) base = base.slice(0, -1);
+  return base;
+}
+
+function getPastEdPronunciation(base) {
+  const final = getPronouncedFinalLetter(base);
+  if (/[td]$/.test(final)) return "id";
+  if (/[ptkfsxc]$/.test(final) || /(ch|sh|th)$/.test(base)) return "t";
+  return "d";
 }
 
 function getWordStressHint(word) {
   const clean = normalizeNotebookWord(word);
   if (clean === "stores") return "stores 是一音节，接近 /storz/；末尾 -s 在 /r/ 后发 /z/，不要读成 sto-re-s。";
-  if (/[^s]s$/.test(clean)) return "结尾 -s 可能读 /s/ 或 /z/；如果前面是浊音或元音，通常更接近 /z/。";
+  if (/(ches|shes|sses|xes|zes|ces|ges|ses)$/.test(clean)) return "这个词尾通常多加一拍 /iz/，先读清楚前面的词，再接短促的 iz。";
+  if (/[^s]s$/.test(clean) && !/(us|ss|is|ous)$/.test(clean)) {
+    const base = /ies$/.test(clean) ? `${clean.slice(0, -3)}y` : clean.slice(0, -1);
+    return `这个词尾 -s 在这里更接近 /${getPluralSPronunciation(base)}/；先读清楚 ${base}，再轻轻接词尾。`;
+  }
+  if (/ed$/.test(clean)) {
+    const base = /ied$/.test(clean) ? `${clean.slice(0, -3)}y` : normalizePastEdBase(clean);
+    return `这个过去式 -ed 在这里更接近 /${getPastEdPronunciation(base)}/；先读原词 ${base}，再接词尾。`;
+  }
   if (/(tion|sion|cian)$/.test(clean)) return "常见规律：-tion/-sion 前一拍更明显；最终请用词典音标确认。";
   if (/(ic|ical|ity|ety)$/.test(clean)) return "常见规律：-ic/-ity 附近常有重音；先慢速跟读再连成整词。";
   if (clean.length <= 5) return "短词先把元音和词尾说完整，再放回短语里。";
